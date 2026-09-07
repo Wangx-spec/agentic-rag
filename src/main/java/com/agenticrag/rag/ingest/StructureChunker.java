@@ -1,6 +1,4 @@
 package com.agenticrag.rag.ingest;
-
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,20 +25,19 @@ public class StructureChunker implements Chunker {
     }
 
     @Override
-    public List<Chunk> split(String text, String docName){
-        
-        if (text == null || text.isBlank()){
+    public List<Chunk> split(String text, String docName) {
+        if (text == null || text.isBlank()) {
             return List.of();
         }
 
         String normalized = text.replace("\r\n", "\n");
-        String[] paragraphs = normalized.split("\\n\\s*\\n");
+        List<String> blocks = splitIntoBlocks(normalized);
         List<Chunk> result = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         int seq = 1;
 
-        for (String paragraph : paragraphs) {
-            String block = paragraph.trim();
+        for (String rawBlock : blocks) {
+            String block = rawBlock.trim();
             if (block.isEmpty()) {
                 continue;
             }
@@ -63,7 +60,6 @@ public class StructureChunker implements Chunker {
         }
 
         return result;
-
     }
 
     private int flush(String block, String docName, List<Chunk> result, int seq) {
@@ -84,4 +80,60 @@ public class StructureChunker implements Chunker {
         return seq;
     }
 
+    static List<String> splitIntoBlocks(String text) {
+        String[] lines = text.split("\n", -1);
+        List<String> blocks = new ArrayList<>();
+        StringBuilder currentBlock = new StringBuilder();
+        StringBuilder paragraph = new StringBuilder();
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) {
+                flushParagraph(paragraph, currentBlock);
+                continue;
+            }
+
+            if (isHeadingLine(trimmed)) {
+                flushParagraph(paragraph, currentBlock);
+                flushBlock(currentBlock, blocks);
+                currentBlock.append(trimmed);
+                continue;
+            }
+
+            if (!paragraph.isEmpty()) {
+                paragraph.append('\n');
+            }
+            paragraph.append(trimmed);
+        }
+
+        flushParagraph(paragraph, currentBlock);
+        flushBlock(currentBlock, blocks);
+        return blocks;
+    }
+
+    static boolean isHeadingLine(String line) {
+        return line.matches("^#{1,6}\\s+.+$")
+                || line.matches("^\\d+(\\.\\d+)*[\\.、]?\\s+.+$")
+                || line.matches("^[一二三四五六七八九十]+[、.]\\s*.+$")
+                || line.matches("^（[一二三四五六七八九十]+）.+$");
+    }
+
+    private static void flushParagraph(StringBuilder paragraph, StringBuilder currentBlock) {
+        if (paragraph.isEmpty()) {
+            return;
+        }
+        if (!currentBlock.isEmpty()) {
+            currentBlock.append("\n\n");
+        }
+        currentBlock.append(paragraph);
+        paragraph.setLength(0);
+    }
+
+    private static void flushBlock(StringBuilder currentBlock, List<String> blocks) {
+        String content = currentBlock.toString().trim();
+        if (!content.isEmpty()) {
+            blocks.add(content);
+        }
+        currentBlock.setLength(0);
+    }
 }

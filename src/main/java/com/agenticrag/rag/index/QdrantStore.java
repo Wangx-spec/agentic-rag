@@ -8,6 +8,7 @@ import io.qdrant.client.ValueFactory;
 import io.qdrant.client.grpc.Collections.CollectionInfo;
 import io.qdrant.client.grpc.Collections.CreateCollection;
 import io.qdrant.client.grpc.Collections.Distance;
+import io.qdrant.client.grpc.Collections.HnswConfigDiff;
 import io.qdrant.client.grpc.Collections.VectorParams;
 import io.qdrant.client.grpc.Collections.VectorsConfig;
 import io.qdrant.client.grpc.JsonWithInt.Value;
@@ -18,6 +19,7 @@ import io.qdrant.client.grpc.Points.Match;
 import io.qdrant.client.grpc.Points.PointId;
 import io.qdrant.client.grpc.Points.PointStruct;
 import io.qdrant.client.grpc.Points.ScoredPoint;
+import io.qdrant.client.grpc.Points.SearchParams;
 import io.qdrant.client.grpc.Points.SearchPoints;
 import io.qdrant.client.grpc.Points.Vector;
 import io.qdrant.client.grpc.Points.Vectors;
@@ -95,6 +97,9 @@ public class QdrantStore implements VectorStore {
                 .setCollectionName(collectionName())
                 .addAllVector(toList(queryVector))
                 .setLimit(topK)
+                .setParams(SearchParams.newBuilder()
+                        .setHnswEf(ragProperties.getVector().getQdrant().getSearchEf())
+                        .build())
                 .setWithPayload(WithPayloadSelector.newBuilder().setEnable(true).build())
                 .setWithVectors(WithVectorsSelector.newBuilder().setEnable(false).build())
                 .build();
@@ -157,6 +162,10 @@ public class QdrantStore implements VectorStore {
                         .setParams(VectorParams.newBuilder()
                                 .setSize(ragProperties.getEmbeddingDim())
                                 .setDistance(Distance.Cosine)
+                                .setHnswConfig(HnswConfigDiff.newBuilder()
+                                        .setM(ragProperties.getVector().getQdrant().getHnswM())
+                                        .setEfConstruct(ragProperties.getVector().getQdrant().getEfConstruct())
+                                        .build())
                                 .build())
                         .build())
                 .build();

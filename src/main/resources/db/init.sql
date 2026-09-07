@@ -2,7 +2,7 @@ CREATE TABLE documents (
     id          BIGSERIAL PRIMARY KEY,
     name        VARCHAR(512) NOT NULL,
     chunk_count INT NOT NULL DEFAULT 0,
-    status      VARCHAR(16) NOT NULL DEFAULT 'PROCESSING',
+    status      VARCHAR(16) NOT NULL DEFAULT 'READY',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

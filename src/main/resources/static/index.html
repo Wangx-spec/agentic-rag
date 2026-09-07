@@ -34,6 +34,18 @@
   .msg.user .bubble { background: #4f6ef7; color: #fff; border-bottom-right-radius: 4px; }
   .msg.assistant .bubble { background: #1c1f27; border: 1px solid #2a2e39; border-bottom-left-radius: 4px; }
   .msg.error .bubble { background: #3a1414; border: 1px solid #5c1f1f; color: #ff9b9b; }
+  .assistant-stream { display: flex; flex-direction: column; gap: 10px; }
+  .stream-block { display: none; flex-direction: column; gap: 6px; }
+  .stream-block.open { display: flex; }
+  .stream-label { font-size: 11px; color: #8a8f9c; letter-spacing: .04em; }
+  .thinking-content {
+    background: #151924; border: 1px solid #2f3952; color: #bfc8dd;
+    border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.7;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .answer-content {
+    color: #e6e6e6; white-space: pre-wrap; word-break: break-word;
+  }
   .typing { display: inline-flex; gap: 4px; padding: 4px 0; }
   .typing span {
     width: 6px; height: 6px; border-radius: 50%; background: #8a8f9c;
@@ -173,6 +185,40 @@ function addTyping() {
   return div;
 }
 
+function createAssistantStream() {
+  const row = document.createElement('div');
+  row.className = 'msg assistant';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble assistant-stream';
+
+  const thinkingBlock = document.createElement('div');
+  thinkingBlock.className = 'stream-block';
+  const thinkingLabel = document.createElement('div');
+  thinkingLabel.className = 'stream-label';
+  thinkingLabel.textContent = '思考过程';
+  const thinkingContent = document.createElement('div');
+  thinkingContent.className = 'thinking-content';
+  thinkingBlock.appendChild(thinkingLabel);
+  thinkingBlock.appendChild(thinkingContent);
+
+  const answerBlock = document.createElement('div');
+  answerBlock.className = 'stream-block';
+  const answerLabel = document.createElement('div');
+  answerLabel.className = 'stream-label';
+  answerLabel.textContent = '最终答案';
+  const answerContent = document.createElement('div');
+  answerContent.className = 'answer-content';
+  answerBlock.appendChild(answerLabel);
+  answerBlock.appendChild(answerContent);
+
+  bubble.appendChild(thinkingBlock);
+  bubble.appendChild(answerBlock);
+  row.appendChild(bubble);
+
+  return { row, thinkingBlock, thinkingContent, answerBlock, answerContent };
+}
+
 function setBusy(state) {
   busy = state;
   sendBtn.disabled = state;
@@ -187,9 +233,18 @@ async function send() {
   addBubble('user', text);
   setBusy(true);
   const typingEl = addTyping();
-  const answerBubble = document.createElement('div');
-  answerBubble.className = 'bubble';
+  let streamView = null;
+  let thinking = '';
   let answer = '';
+
+  function ensureStreamView() {
+    if (streamView) return streamView;
+    streamView = createAssistantStream();
+    if (typingEl.parentElement) typingEl.remove();
+    messagesEl.appendChild(streamView.row);
+    messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
+    return streamView;
+  }
 
   try {
     const resp = await fetch('/api/chat', {
@@ -201,7 +256,6 @@ async function send() {
       const errText = await resp.text().catch(() => '');
       throw new Error('HTTP ' + resp.status + ' ' + errText.slice(0, 200));
     }
-    typingEl.remove();
 
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
@@ -216,17 +270,23 @@ async function send() {
         buffer = buffer.slice(sep + 2);
         const evt = parseSse(rawEvent);
         if (!evt) continue;
-        if (evt.event === 'delta') {
+        if (evt.event === 'thinking') {
           let chunk = evt.data;
           try { chunk = JSON.parse(evt.data).text; } catch (e) {}
+          if (!chunk) continue;
+          thinking += chunk;
+          const view = ensureStreamView();
+          view.thinkingBlock.classList.add('open');
+          view.thinkingContent.textContent = thinking;
+          messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
+        } else if (evt.event === 'delta') {
+          let chunk = evt.data;
+          try { chunk = JSON.parse(evt.data).text; } catch (e) {}
+          if (!chunk) continue;
           answer += chunk;
-          if (!answerBubble.parentElement) {
-            const div = document.createElement('div');
-            div.className = 'msg assistant';
-            div.appendChild(answerBubble);
-            messagesEl.appendChild(div);
-          }
-          answerBubble.textContent = answer;
+          const view = ensureStreamView();
+          view.answerBlock.classList.add('open');
+          view.answerContent.textContent = answer;
           messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
         } else if (evt.event === 'error') {
           let msg = evt.data;
@@ -236,7 +296,7 @@ async function send() {
       }
     }
   } catch (e) {
-    typingEl.remove();
+    if (typingEl.parentElement) typingEl.remove();
     addBubble('error', '请求失败: ' + e.message);
   } finally {
     setBusy(false);

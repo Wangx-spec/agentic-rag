@@ -20,7 +20,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * OpenAI 兼容 LLM 客户端（手写实现，不依赖任何 AI 框架）
@@ -46,7 +45,7 @@ public class LlmClient {
      *
      * @throws LlmException 请求失败 / 响应异常 / 流中断
      */
-    public String chatStream(List<ChatMessage> messages, Consumer<String> onDelta) {
+    public String chatStream(List<ChatMessage> messages, StreamListener listener) {
         if (!properties.isConfigured()) {
             throw new LlmException("LLM 未配置：请设置 llm.base-url / llm.api-key / llm.model（推荐用环境变量 LLM_API_KEY 注入 key）");
         }
@@ -56,7 +55,13 @@ public class LlmClient {
                 String body = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
                 throw new LlmException("LLM 返回 " + response.statusCode() + ": " + extractErrorMessage(body, response.statusCode()));
             }
-            return readStream(response.body(), onDelta);
+            return readStream(response.body(), listener);
+        } catch (StreamInterruptedException e) {
+            String fallback = chat(messages);
+            if (listener != null && !fallback.isEmpty()) {
+                listener.onAnswer(fallback);
+            }
+            return fallback;
         } catch (LlmException e) {
             throw e;
         } catch (Exception e) {
@@ -110,8 +115,9 @@ public class LlmClient {
         return client().send(request, HttpResponse.BodyHandlers.ofInputStream());
     }
 
-    private String readStream(java.io.InputStream inputStream, Consumer<String> onDelta) throws IOException {
+    private String readStream(java.io.InputStream inputStream, StreamListener listener) throws IOException {
         StringBuilder full = new StringBuilder();
+        int reasoningChunks = 0;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
@@ -131,14 +137,29 @@ public class LlmClient {
                 if (node.has("error")) {
                     throw new LlmException("LLM 流式返回错误: " + node.path("error").path("message").asText("unknown"));
                 }
+                String reasoning = node.path("choices").path(0).path("delta").path("reasoning_content").asText("");
+                if (!reasoning.isEmpty()) {
+                    reasoningChunks++;
+                    if (listener != null) {
+                        listener.onThinking(reasoning);
+                    }
+                }
                 String delta = node.path("choices").path(0).path("delta").path("content").asText("");
                 if (!delta.isEmpty()) {
                     full.append(delta);
-                    if (onDelta != null) {
-                        onDelta.accept(delta);
+                    if (listener != null) {
+                        listener.onAnswer(delta);
                     }
                 }
             }
+        } catch (IOException e) {
+            if (!full.isEmpty()) {
+                return full.toString();
+            }
+            if (reasoningChunks > 0) {
+                throw new StreamInterruptedException(reasoningChunks, e);
+            }
+            throw e;
         }
         if (full.isEmpty()) {
             throw new LlmException("LLM 返回了空内容");
@@ -184,6 +205,20 @@ public class LlmClient {
 
         public LlmException(String message, Throwable cause) {
             super(message, cause);
+        }
+    }
+
+    private static class StreamInterruptedException extends IOException {
+        private StreamInterruptedException(int reasoningChunks, Throwable cause) {
+            super("stream interrupted after reasoning-only phase", cause);
+        }
+    }
+
+    public interface StreamListener {
+        default void onThinking(String delta) {
+        }
+
+        default void onAnswer(String delta) {
         }
     }
 }

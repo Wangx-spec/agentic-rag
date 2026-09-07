@@ -16,14 +16,17 @@ rag:
   top-k: 10
   final-top-n: 5
   rrf-k: 60
-  embedding-dim: ${RAG_EMBEDDING_DIM:1024} # 与 embedding-model 一致：bge-m3=1024，text-embedding-3-small=1536
+  embedding-dim: ${RAG_EMBEDDING_DIM:4096} # 与 embedding-model 一致：Qwen3-Embedding-8B=4096，bge-m3=1024
   data-dir: ./data
   vector:
     type: qdrant
     qdrant:
       host: localhost
       port: 6334
-      collection: agentic_rag_chunks
+      collection-prefix: agentic_rag_chunks
+      hnsw-m: 16
+      ef-construct: 100
+      search-ef: 100
 
 # LLM 配置（OpenAI 兼容接口）
 # API Key 用环境变量注入：export LLM_API_KEY=sk-xxx
@@ -31,7 +34,7 @@ llm:
   base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
   api-key: ${LLM_API_KEY:}
   chat-model: ${LLM_CHAT_MODEL:deepseek-ai/DeepSeek-V4-Flash}
-  embedding-model: ${LLM_EMBEDDING_MODEL:BAAI/bge-m3}
+  embedding-model: ${LLM_EMBEDDING_MODEL:Qwen/Qwen3-Embedding-8B}
   timeout-seconds: 60
   max-agent-rounds: 5
   memory-rounds: 10

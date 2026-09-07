@@ -57,8 +57,16 @@ public class ChatController {
 
         CompletableFuture.runAsync(() -> {
             try {
-                String full = llmClient.chatStream(messages, delta -> {
-                            send(emitter, "delta", Map.of("text", delta));
+                String full = llmClient.chatStream(messages, new LlmClient.StreamListener() {
+                    @Override
+                    public void onThinking(String delta) {
+                        send(emitter, "thinking", Map.of("text", delta));
+                    }
+
+                    @Override
+                    public void onAnswer(String delta) {
+                        send(emitter, "delta", Map.of("text", delta));
+                    }
                 });
                 memory.append(sessionId, ChatMessage.assistant(full));
                 send(emitter, "done", Map.of(
