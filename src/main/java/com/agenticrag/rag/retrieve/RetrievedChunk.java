@@ -5,5 +5,13 @@ package com.agenticrag.rag.retrieve;
  * <p>
  * 计划字段：chunkId、content、docName、rrfScore、rank（组装 [n] 引用编号用）
  */
-public record RetrievedChunk() {
+public record RetrievedChunk(
+    Long chunkId,
+    Long documentId,
+    int seq,
+    String content,
+    String docName,
+    double rrfScore,
+    int rank
+) {
 }

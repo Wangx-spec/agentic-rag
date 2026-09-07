@@ -4,10 +4,12 @@ import com.agenticrag.config.LlmProperties;
 import com.agenticrag.llm.LlmClient;
 import com.agenticrag.llm.dto.ChatMessage;
 import com.agenticrag.memory.ConversationMemory;
+import com.agenticrag.rag.retrieve.HybridRetriever;
+import com.agenticrag.rag.retrieve.RetrievedChunk;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,109 +20,98 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.CompletableFuture;
 
-/**
- * 聊天接口（SSE 流式）
- */
-@Slf4j
 @RestController
 @RequestMapping("/api")
+@Slf4j
 @RequiredArgsConstructor
 public class ChatController {
 
-    private static final String SYSTEM_PROMPT = "你是一个有帮助的 AI 助手。回答保持准确、简洁。";
-
+    private final LlmProperties llmProperties;
     private final LlmClient llmClient;
     private final ConversationMemory memory;
-    private final LlmProperties llmProperties;
+    private final HybridRetriever hybridRetriever;
 
-    /** 聊天执行线程池：与 Tomcat 工作线程隔离 */
-    private final ExecutorService chatExecutor = Executors.newCachedThreadPool();
+    @PostMapping(path = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter chat(@RequestBody ChatRequest req, HttpServletResponse response) {
+        response.setHeader("Cache-Control", "no-cache");
+        response.setHeader("X-Accel-Buffering", "no");
 
-    public record ChatRequest(String sessionId, String message) {
-    }
+        SseEmitter emitter = new SseEmitter(0L);
 
-    /**
-     * 流式对话：SSE 事件 delta（增量文本）→ done / error
-     */
-    @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chat(@RequestBody ChatRequest request) {
-        String sessionId = (request.sessionId() == null || request.sessionId().isBlank())
-                ? UUID.randomUUID().toString()
-                : request.sessionId();
-        String question = request.message() == null ? "" : request.message().trim();
-
-        SseEmitter emitter = new SseEmitter(120_000L);
-
-        if (question.isEmpty()) {
-            sendAndComplete(emitter, "error", "{\"message\":\"message 不能为空\"}");
+        if (req == null || req.message() == null || req.message().isBlank()) {
+            sendErrorAndComplete(emitter, "message 不能为空");
             return emitter;
         }
         if (!llmProperties.isConfigured()) {
-            sendAndComplete(emitter, "error",
-                    "{\"message\":\"LLM 未配置：请设置环境变量 LLM_API_KEY，并在 application.yaml 配置 llm.base-url / llm.model\"}");
+            sendErrorAndComplete(emitter, "LLM 未配置，请设置 LLM_API_KEY 环境变量");
             return emitter;
         }
 
-        chatExecutor.submit(() -> {
+        String sessionId = (req.sessionId() == null || req.sessionId().isBlank()) ? "default" : req.sessionId();
+        memory.append(sessionId, ChatMessage.user(req.message()));
+
+        List<RetrievedChunk> retrieved = hybridRetriever.retrieve(req.message());
+        List<ChatMessage> messages = buildMessages(sessionId, retrieved);
+
+        CompletableFuture.runAsync(() -> {
             try {
-                memory.append(sessionId, ChatMessage.user(question));
-                List<ChatMessage> messages = new ArrayList<>();
-                messages.add(ChatMessage.system(SYSTEM_PROMPT));
-                messages.addAll(memory.load(sessionId, llmProperties.getMemoryRounds() * 2));
-
-                StringBuilder answer = new StringBuilder();
-                llmClient.chatStream(messages, delta -> {
-                    answer.append(delta);
-                    sendQuietly(emitter, "delta", delta);
+                String full = llmClient.chatStream(messages, delta -> {
+                            send(emitter, "delta", Map.of("text", delta));
                 });
-
-                memory.append(sessionId, ChatMessage.assistant(answer.toString()));
-                sendAndComplete(emitter, "done", "{\"sessionId\":\"" + sessionId + "\"}");
+                memory.append(sessionId, ChatMessage.assistant(full));
+                send(emitter, "done", Map.of(
+                        "sources", retrieved.stream()
+                                .map(chunk -> Map.of(
+                                        "n", chunk.rank(),
+                                        "docName", chunk.docName(),
+                                        "snippet", chunk.content()
+                                ))
+                                .toList()
+                ));
+                emitter.complete();
             } catch (Exception e) {
-                log.error("聊天处理失败, sessionId: {}", sessionId, e);
-                sendAndComplete(emitter, "error", "{\"message\":\"" + escape(e.getMessage()) + "\"}");
+                log.warn("Chat SSE failed, sessionId={}", sessionId, e);
+                sendErrorAndComplete(emitter, e.getMessage());
             }
         });
+
         return emitter;
     }
 
-    /**
-     * 健康检查：服务状态 + LLM 配置是否就绪
-     */
-    @GetMapping("/health")
-    public Map<String, Object> health() {
-        return Map.of(
-                "status", "UP",
-                "llmConfigured", llmProperties.isConfigured()
-        );
-    }
-
-    // ==================== 内部工具 ====================
-
-    private void sendQuietly(SseEmitter emitter, String event, String data) {
-        try {
-            emitter.send(SseEmitter.event().name(event).data(data == null ? "" : data));
-        } catch (IOException | IllegalStateException e) {
-            // 客户端断开：忽略
+    private List<ChatMessage> buildMessages(String sessionId, List<RetrievedChunk> retrieved) {
+        List<ChatMessage> messages = new ArrayList<>();
+        if (retrieved == null || retrieved.isEmpty()) {
+            messages.add(new ChatMessage("system", "你是一个乐于助人的中文助手，回答简洁清晰。"));
+        } else {
+            StringBuilder context = new StringBuilder();
+            context.append("你是一个基于上下文回答问题的中文助手。请优先利用给定上下文回答，并在句末用 [n] 标注引用；如果上下文不足，请明确说明。\n\n");
+            for (RetrievedChunk chunk : retrieved) {
+                context.append("[").append(chunk.rank()).append("] ")
+                        .append(chunk.docName()).append("：")
+                        .append(chunk.content()).append("\n\n");
+            }
+            messages.add(ChatMessage.system(context.toString()));
         }
+        messages.addAll(memory.load(sessionId, llmProperties.getMemoryRounds() * 2));
+        return messages;
     }
 
-    private void sendAndComplete(SseEmitter emitter, String event, String data) {
-        sendQuietly(emitter, event, data);
+    private void send(SseEmitter emitter, String event, Object data) {
         try {
+            emitter.send(SseEmitter.event().name(event).data(data));
+        } catch (IOException e) {
+            log.debug("Failed to send SSE event {}", event, e);
             emitter.complete();
-        } catch (Exception ignored) {
         }
     }
 
-    private static String escape(String text) {
-        if (text == null) {
-            return "unknown error";
-        }
-        return text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ");
+    private void sendErrorAndComplete(SseEmitter emitter, String message) {
+        send(emitter, "error", Map.of("message", message));
+        emitter.complete();
+    }
+
+    public record ChatRequest(String sessionId, String message) {
     }
 }

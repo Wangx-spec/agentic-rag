@@ -7,3 +7,4 @@ target/
 .DS_Store
 .env
 docs/
+src/main/resources/application.yaml

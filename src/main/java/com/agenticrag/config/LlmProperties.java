@@ -17,7 +17,9 @@ public class LlmProperties {
     private String apiKey;
 
     /** 模型名，如 Qwen/Qwen2.5-72B-Instruct */
-    private String model;
+    private String chatModel;
+
+    private String embeddingModel;
 
     /** 请求超时（秒） */
     private int timeoutSeconds = 60;
@@ -29,8 +31,6 @@ public class LlmProperties {
     private int memoryRounds = 10;
 
     public boolean isConfigured() {
-        return baseUrl != null && !baseUrl.isBlank()
-                && apiKey != null && !apiKey.isBlank()
-                && model != null && !model.isBlank();
+        return apiKey != null && !apiKey.isBlank();
     }
 }

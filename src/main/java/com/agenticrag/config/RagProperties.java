@@ -1,5 +1,6 @@
 package com.agenticrag.config;
 
+import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -13,6 +14,39 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * - vector.type(qdrant | memory)                向量存储装配选择
  * - vector.qdrant.host / port(6334) / collection(agentic_rag_chunks)
  */
+@Data
 @ConfigurationProperties(prefix = "rag")
 public class RagProperties {
+
+    private int chunkSize = 500;
+    private int chunkOverlap = 50;
+    private int topK = 10;
+    private int finalTopN = 5;
+    private int rrfK = 60;
+    private int embeddingDim = 1536;
+    private String dataDir = "./data";
+    private Vector vector = new Vector();
+
+    @Data
+    public static class Vector {
+        private String type = "qdrant";
+        private Qdrant qdrant = new Qdrant();
+    }
+
+    @Data
+    public static class Qdrant {
+        private String host = "localhost";
+        private int port = 6334;
+        /** collection 名前缀；实际 collection = {prefix}_{modelSlug}_{dim}，实现按 embedding 模型/维度隔离 */
+        private String collectionPrefix = "agentic_rag_chunks";
+        /** 兼容旧配置：若显式设置则优先使用该固定名 */
+        private String collection;
+
+        public String resolveCollection(String modelSlug, int embeddingDim) {
+            if (collection != null && !collection.isBlank()) {
+                return collection;
+            }
+            return collectionPrefix + "_" + modelSlug + "_" + embeddingDim;
+        }
+    }
 }

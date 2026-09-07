@@ -90,7 +90,7 @@ public class LlmClient {
 
     private HttpResponse<java.io.InputStream> send(List<ChatMessage> messages, boolean stream) throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("model", properties.getModel());
+        body.put("model", properties.getChatModel());
         body.put("stream", stream);
         ArrayNode messageNodes = body.putArray("messages");
         for (ChatMessage message : messages) {
@@ -167,6 +167,7 @@ public class LlmClient {
             synchronized (this) {
                 if (httpClient == null) {
                     httpClient = HttpClient.newBuilder()
+                            .version(HttpClient.Version.HTTP_1_1)
                             .connectTimeout(Duration.ofSeconds(15))
                             .build();
                 }
