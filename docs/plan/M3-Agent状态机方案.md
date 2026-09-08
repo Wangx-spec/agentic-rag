@@ -62,6 +62,8 @@ interface Tool {
 }
 ```
 
+> **接口与 MCP 协议对齐（2026-09-08 决策）**：本接口四件套与 MCP 工具定义（name/description/inputSchema/tools-call）一一对应——这是刻意设计，为 T8 的 `McpToolAdapter`（远程 MCP 工具动态接入）预留。`ToolRegistry` 是**双来源**的：本地实现 + 远程 MCP server 工具，AgentLoop 对来源零感知。跨项目跨团队工具复用走 MCP 协议（M×N → M+N）。
+
 - `ToolSchemaValidator`：解析 schema 的 `required` / `properties.type`，校验 arguments：
   - 缺必填 → 不执行，把「缺失参数 xx」作为观察结果反馈模型重试
   - 类型不符 → 同样反馈，不执行
@@ -122,6 +124,7 @@ POST /api/chat {sessionId, message, agent: true}
 | T5 过程事件 | AgentLoop 内事件推送接口（Reporter） | 编排测：事件序列顺序断言 |
 | T6 聊天接入 | agent 参数分流 + 最终回答流式 | 端到端：问文档问题 → SSE 见工具事件 → 回答带引用 |
 | T7 上限与降级 | 达 maxRounds 强制 FINAL；LLM 异常回退普通 RAG 链路 | AgentLoopTest：上限用例；异常用例 |
+| T8（可选）McpToolAdapter | 官方 Java SDK（`io.modelcontextprotocol.sdk:mcp`，独立于 Spring AI）：连接外部 MCP server（stdio 或 StreamableHTTP）→ 列举工具 → 逐一包装为 Tool 注册进 ToolRegistry；Schema 校验复用 T3 校验器 | 接任一现成 MCP server（如文件系统参考实现），Agent 循环中成功调用远程工具；MCP server 不可达时启动降级（仅本地工具，不阻塞） |
 
 ## 六、验收标准
 
@@ -140,3 +143,5 @@ POST /api/chat {sessionId, message, agent: true}
 2. **校验失败不抛异常、转观察结果**：把错误还给模型重试，是 Agent 自愈的标准模式
 3. **单工具串行**：先保证循环正确性；并行工具在 M5 多 Agent 层面用 Worker 并行覆盖
 4. **maxRounds=5 硬上限**：成本与死循环防护，强制收敛而非放任
+5. **工具双来源（本地 + MCP），循环零感知**：MCP 不替代 function calling——它是工具的复用与共享层（跨项目跨团队一次实现、处处可用，M×N→M+N）；AgentLoop 只面对统一的 Tool 接口，本地实现与远程 MCP 工具无差别。若 T8 未做，接口抽象保持不变、后置不返工
+6. **对外的 MCP server 落 M7 U6**（2026-09-08 修订）：agentic-rag 反向暴露 `search_knowledge_base` 等能力，供其他 Agent/IDE/团队项目调用——「既是 MCP 消费者又是提供者」的完整闭环；与 playground 的 rag-service 模块同体（一次工作、两个产出）。详见 M7 方案第 2.4 节

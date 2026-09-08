@@ -66,17 +66,26 @@ class RagSmokeTest {
         });
         when(embeddingClient.embed(anyString())).thenAnswer(invocation -> toVector(invocation.getArgument(0)));
 
-        Document document = ingestService.ingest("guide.pdf",
+        Document document = ingestService.submitTask("guide.pdf",
                 new ByteArrayInputStream(createPdf("""
                         RAG uses vector retrieval and BM25 together.
                         Citations help answers stay grounded.
                         """)));
 
+        assertEquals(DocumentStatus.PENDING, document.status());
+        
+        ingestService.processDocument(document.id());
+        
+        Document processed = ingestService.listDocuments().stream()
+                .filter(d -> d.id().equals(document.id()))
+                .findFirst()
+                .orElseThrow();
+        
         List<Document> documents = ingestService.listDocuments();
         List<RetrievedChunk> retrieved = hybridRetriever.retrieve("vector retrieval");
 
-        assertEquals(DocumentStatus.READY, document.status());
-        assertTrue(document.chunkCount() > 0);
+        assertEquals(DocumentStatus.DONE, processed.status());
+        assertTrue(processed.chunkCount() > 0);
         assertEquals(1, documents.size());
         assertEquals("guide.pdf", documents.get(0).name());
         assertFalse(retrieved.isEmpty());

@@ -7,4 +7,6 @@ target/
 .DS_Store
 /docs/private
 .env
-src/main/resources/application.yaml
+.env.*
+!.env.example
+src/main/resources/application-local.yaml

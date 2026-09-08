@@ -1,0 +1,49 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: agentic-rag
+  datasource:
+    url: jdbc:postgresql://localhost:5432/agentic_rag
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/init.sql
+ 
+rag:
+  chunk-size: 500
+  chunk-overlap: 50
+  top-k: 10
+  final-top-n: 5
+  rrf-k: 60
+  embedding-dim: ${RAG_EMBEDDING_DIM:4096} # 与 embedding-model 一致：Qwen3-Embedding-8B=4096，bge-m3=1024
+  data-dir: ./data
+  min-chunk-size: 80
+  vector:
+    type: qdrant
+    qdrant:
+      host: localhost
+      port: 6334
+      collection-prefix: agentic_rag_chunks
+      hnsw-m: 16
+      ef-construct: 100
+      search-ef: 100
+
+# LLM 配置（OpenAI 兼容接口）
+# API Key 必须通过环境变量注入，禁止在仓库中保存真实密钥
+llm:
+  base-url: ${LLM_BASE_URL:https://api.siliconflow.cn/v1}
+  api-key: ${LLM_API_KEY}
+  chat-model: ${LLM_CHAT_MODEL:zai-org/GLM-5.3}
+  embedding-model: ${LLM_EMBEDDING_MODEL:Qwen/Qwen3-Embedding-8B}
+  timeout-seconds: 60
+  max-agent-rounds: 5
+  memory-rounds: 10
+
+logging:
+  level:
+    com.agenticrag: info

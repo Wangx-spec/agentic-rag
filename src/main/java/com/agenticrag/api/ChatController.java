@@ -111,7 +111,8 @@ public class ChatController {
             emitter.send(SseEmitter.event().name(event).data(data));
         } catch (IOException e) {
             log.debug("Failed to send SSE event {}", event, e);
-            emitter.complete();
+            // Don't call emitter.complete() here - let it be handled by container's error callback
+            // to avoid "non-container thread attempted to use AsyncContext after error" issue
         }
     }
 

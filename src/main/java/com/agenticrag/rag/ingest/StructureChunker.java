@@ -34,6 +34,7 @@ public class StructureChunker implements Chunker {
         List<String> blocks = splitIntoBlocks(normalized);
         List<Chunk> result = new ArrayList<>();
         StringBuilder current = new StringBuilder();
+        StringBuilder pending = new StringBuilder();
         int seq = 1;
 
         for (String rawBlock : blocks) {
@@ -47,37 +48,83 @@ public class StructureChunker implements Chunker {
                 continue;
             }
 
-            if (current.length() + block.length() + 2 <= ragProperties.getChunkSize()) {
+            int combinedLength = current.length() + block.length() + 2;
+            if (combinedLength <= ragProperties.getChunkSize()) {
                 current.append("\n\n").append(block);
             } else {
-                seq = flush(current.toString(), docName, result, seq);
+                seq = flush(current.toString(), docName, result, seq, pending);
                 current = new StringBuilder(block);
             }
         }
 
         if (!current.isEmpty()) {
-            flush(current.toString(), docName, result, seq);
+            seq = flush(current.toString(), docName, result, seq, pending);
+        }
+
+        if (!pending.isEmpty()){
+            flush(pending.toString(), docName, result, seq);
         }
 
         return result;
     }
 
-    private int flush(String block, String docName, List<Chunk> result, int seq) {
+    private int flush(String content, String docName, List<Chunk> result, int seq) {
+        String trimmed = content.trim();
+        if (trimmed.isEmpty()) {
+            return seq;
+        }
+
+        if (trimmed.length() <= ragProperties.getChunkSize()) {
+            result.add(new Chunk(null, null, seq, trimmed));
+            return seq + 1;
+        }
+
+        List<Chunk> fallback = fixedChunker.split(trimmed, docName);
+        for (Chunk chunk : fallback) {
+            result.add(new Chunk(null, null, seq++, chunk.content()));
+        }
+        return seq;
+    }
+
+    private int flush(String block, String docName, List<Chunk> result, int seq, StringBuilder pending) {
         String content = block.trim();
         if (content.isEmpty()) {
             return seq;
         }
 
-        if (content.length() <= ragProperties.getChunkSize()) {
-            result.add(new Chunk(null, null, seq, content));
-            return seq + 1;
+        int minChunkSize = ragProperties.getMinChunkSize();
+        if (content.length() < minChunkSize && !pending.isEmpty()) {
+            String combined = pending.toString().trim() + "\n\n" + content;
+            if (combined.length() <= ragProperties.getChunkSize()) {
+                pending.setLength(0);
+                content = combined;
+            }
         }
 
-        List<Chunk> fallback = fixedChunker.split(content, docName);
-        for (Chunk chunk : fallback) {
-            result.add(new Chunk(null, null, seq++, chunk.content()));
+        if (content.length() < minChunkSize && !result.isEmpty()) {
+            Chunk lastChunk = result.get(result.size() - 1);
+            if (lastChunk.content().length() + content.length() + 2 <= ragProperties.getChunkSize()) {
+                String merged = lastChunk.content() + "\n\n" + content;
+                result.set(result.size() - 1, new Chunk(lastChunk.id(), lastChunk.documentId(), lastChunk.seq(), merged));
+                return seq;
+            }
         }
-        return seq;
+
+        if (content.length() < minChunkSize) {
+            if (pending.isEmpty()) {
+                pending.append(content);
+            } else {
+                pending.append("\n\n").append(content);
+            }
+            return seq;
+        }
+
+        if (!pending.isEmpty()) {
+            content = pending.toString().trim() + "\n\n" + content;
+            pending.setLength(0);
+        }
+
+        return flush(content, docName, result, seq);
     }
 
     static List<String> splitIntoBlocks(String text) {

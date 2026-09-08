@@ -57,9 +57,13 @@ public class LlmClient {
             }
             return readStream(response.body(), listener);
         } catch (StreamInterruptedException e) {
+            // 思考中断，降级同步
             String fallback = chat(messages);
-            if (listener != null && !fallback.isEmpty()) {
-                listener.onAnswer(fallback);
+            if (listener != null) {
+                // 发送空 delta 触发前端从思考模式切换到回答模式
+                if (!fallback.isEmpty()) {
+                    listener.onAnswer(fallback);
+                }
             }
             return fallback;
         } catch (LlmException e) {

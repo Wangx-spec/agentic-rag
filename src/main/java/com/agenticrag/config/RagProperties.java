@@ -26,6 +26,9 @@ public class RagProperties {
     private int rrfK = 60;
     private int embeddingDim = 4096;
     private String dataDir = "./data";
+    private long maxFileSizeBytes = 50 * 1024 * 1024;
+    private String allowedExtensions = ".pdf,.txt,.md";
+    private int minChunkSize = 80;
     private Vector vector = new Vector();
 
     @Data

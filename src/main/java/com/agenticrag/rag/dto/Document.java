@@ -10,8 +10,10 @@ import java.time.Instant;
 public record Document(
         Long id,
         String name,
+        String filePath,
         int chunkCount,
         DocumentStatus status,
+        String errorMsg,
         Instant createdAt
 ) {
 

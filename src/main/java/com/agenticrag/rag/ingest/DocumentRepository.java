@@ -21,8 +21,10 @@ public class DocumentRepository {
     private final RowMapper<Document> rowMapper = (rs, rowNum) -> new Document(
             rs.getLong("id"),
             rs.getString("name"),
+            rs.getString("file_path"),
             rs.getInt("chunk_count"),
             DocumentStatus.valueOf(rs.getString("status")),
+            rs.getString("error_msg"),
             rs.getTimestamp("created_at").toInstant()
     );
 
@@ -30,17 +32,22 @@ public class DocumentRepository {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public Long insertProcessing(String name) {
+    /**
+     * 插入待处理文档（PENDING 状态）
+     */
+    public Long insertPending(String name, String filePath) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(
-                    "INSERT INTO documents(name, chunk_count, status, created_at) VALUES (?, ?, ?, ?)",
+                    "INSERT INTO documents(name, file_path, chunk_count, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
                     new String[]{"id"}
             );
             ps.setString(1, name);
-            ps.setInt(2, 0);
-            ps.setString(3, DocumentStatus.PROCESSING.name());
-            ps.setTimestamp(4, Timestamp.from(Instant.now()));
+            ps.setString(2, filePath);
+            ps.setInt(3, 0);
+            ps.setString(4, DocumentStatus.PENDING.name());
+            ps.setTimestamp(5, Timestamp.from(Instant.now()));
+            ps.setTimestamp(6, Timestamp.from(Instant.now()));
             return ps;
         }, keyHolder);
 
@@ -51,26 +58,103 @@ public class DocumentRepository {
         return key.longValue();
     }
 
-    public void markReady(Long documentId, int chunkCount) {
+    /**
+     * 标记文档为处理中状态
+     */
+    public void markProcessing(Long documentId) {
         jdbcTemplate.update(
-                "UPDATE documents SET chunk_count = ?, status = ? WHERE id = ?",
-                chunkCount,
-                DocumentStatus.READY.name(),
+                "UPDATE documents SET status = ?, updated_at = ? WHERE id = ?",
+                DocumentStatus.PROCESSING.name(),
+                Timestamp.from(Instant.now()),
                 documentId
         );
     }
 
-    public void markFailed(Long documentId) {
+    /**
+     * 仅当文档仍处于 PENDING 时才抢占为 PROCESSING。
+     *
+     * @return true 表示当前调用成功抢到任务；false 表示任务已被其他流程处理或状态已变更
+     */
+    public boolean markProcessingIfPending(Long documentId) {
+        int updated = jdbcTemplate.update(
+                "UPDATE documents SET status = ?, updated_at = ? WHERE id = ? AND status = ?",
+                DocumentStatus.PROCESSING.name(),
+                Timestamp.from(Instant.now()),
+                documentId,
+                DocumentStatus.PENDING.name()
+        );
+        return updated > 0;
+    }
+
+    /**
+     * 标记文档为完成状态（原 markReady，现改为 DONE）
+     */
+    public void markDone(Long documentId, int chunkCount) {
         jdbcTemplate.update(
-                "UPDATE documents SET status = ? WHERE id = ?",
-                DocumentStatus.FAILED.name(),
+                "UPDATE documents SET chunk_count = ?, status = ?, updated_at = ? WHERE id = ?",
+                chunkCount,
+                DocumentStatus.DONE.name(),
+                Timestamp.from(Instant.now()),
                 documentId
+        );
+    }
+
+    /**
+     * 标记文档为失败状态，并记录错误信息
+     */
+    public void markFailed(Long documentId, String errorMsg) {
+        jdbcTemplate.update(
+                "UPDATE documents SET status = ?, error_msg = ?, updated_at = ? WHERE id = ?",
+                DocumentStatus.FAILED.name(),
+                errorMsg,
+                Timestamp.from(Instant.now()),
+                documentId
+        );
+    }
+    /**
+     * 根据ID查找文档
+     * @return 文档对象或 null（若不存在）
+     */
+    public Document findById(Long documentId){
+        List<Document> results = jdbcTemplate.query(
+            "SELECT id, name, file_path, chunk_count, status, error_msg, created_at FROM documents WHERE id = ?",
+            rowMapper,
+            documentId
+        );
+        return results.isEmpty() ? null : results.get(0);
+    }
+
+    /**
+     * 查找所有待处理或处理中的文档（用于启动恢复）
+     * @return 文档列表（按创建时间降序）
+     */
+    public List<Document> findPendingOrProcessing(){
+        return jdbcTemplate.query(
+            "SELECT id, name, file_path, chunk_count, status, error_msg, created_at FROM documents " +
+            "WHERE status IN (?, ?) ORDER BY created_at ASC",
+            rowMapper,
+            DocumentStatus.PENDING.name(),
+            DocumentStatus.PROCESSING.name()
+        );
+    }
+
+    /**
+     * 启动恢复时，将上次异常中断留下的 PROCESSING 任务回滚为 PENDING。
+     *
+     * @return 被回滚的任务数
+     */
+    public int resetProcessingToPending() {
+        return jdbcTemplate.update(
+                "UPDATE documents SET status = ?, updated_at = ?, error_msg = NULL WHERE status = ?",
+                DocumentStatus.PENDING.name(),
+                Timestamp.from(Instant.now()),
+                DocumentStatus.PROCESSING.name()
         );
     }
 
     public List<Document> findAll() {
         return jdbcTemplate.query(
-                "SELECT id, name, chunk_count, status, created_at FROM documents ORDER BY created_at DESC",
+                "SELECT id, name, file_path, chunk_count, status, error_msg, created_at FROM documents ORDER BY created_at DESC",
                 rowMapper
         );
     }
@@ -92,4 +176,6 @@ public class DocumentRepository {
     public void delete(Long documentId) {
         jdbcTemplate.update("DELETE FROM documents WHERE id = ?", documentId);
     }
+
+
 }

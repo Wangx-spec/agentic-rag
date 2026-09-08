@@ -35,16 +35,55 @@
   .msg.assistant .bubble { background: #1c1f27; border: 1px solid #2a2e39; border-bottom-left-radius: 4px; }
   .msg.error .bubble { background: #3a1414; border: 1px solid #5c1f1f; color: #ff9b9b; }
   .assistant-stream { display: flex; flex-direction: column; gap: 10px; }
-  .stream-block { display: none; flex-direction: column; gap: 6px; }
-  .stream-block.open { display: flex; }
-  .stream-label { font-size: 11px; color: #8a8f9c; letter-spacing: .04em; }
+  .stream-block {
+    display: none; flex-direction: column; gap: 6px; position: relative;
+    opacity: 0; transform: translateY(8px);
+  }
+  .stream-block.open {
+    display: flex; opacity: 1; transform: translateY(0);
+    animation: streamReveal .25s ease-out forwards;
+  }
+  .stream-label {
+    font-size: 11px; color: #8a8f9c; letter-spacing: .04em;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .stream-label::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: currentColor; opacity: .5;
+  }
+  .stream-block.live .stream-label::before {
+    opacity: 1; animation: statusPulse 1.2s ease-in-out infinite;
+  }
+  .stream-thinking.live .stream-label { color: #8fb2ff; }
+  .stream-answer.live .stream-label { color: #5fd9a4; }
   .thinking-content {
     background: #151924; border: 1px solid #2f3952; color: #bfc8dd;
     border-radius: 10px; padding: 10px 12px; font-size: 13px; line-height: 1.7;
-    white-space: pre-wrap; word-break: break-word;
+    white-space: pre-wrap; word-break: break-word; position: relative; overflow: hidden;
   }
   .answer-content {
     color: #e6e6e6; white-space: pre-wrap; word-break: break-word;
+    background: #171b22; border: 1px solid #2a2e39; border-radius: 10px;
+    padding: 10px 12px; min-height: 44px; position: relative; overflow: hidden;
+  }
+  .stream-block.live .thinking-content,
+  .stream-block.live .answer-content { animation: blockGlow 1.8s ease-in-out infinite; }
+  .stream-block.live .thinking-content::after,
+  .stream-block.live .answer-content::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,.08) 48%, transparent 100%);
+    transform: translateX(-100%);
+    animation: contentSweep 2.2s linear infinite;
+    pointer-events: none;
+  }
+  .stream-thinking.live .thinking-content {
+    box-shadow: 0 0 0 1px rgba(143,178,255,.15), 0 0 24px rgba(79,110,247,.12);
+  }
+  .stream-answer.live .answer-content {
+    box-shadow: 0 0 0 1px rgba(95,217,164,.12), 0 0 24px rgba(95,217,164,.10);
+  }
+  .stream-answer.live .answer-content::after {
+    background: linear-gradient(110deg, transparent 0%, rgba(95,217,164,.10) 48%, transparent 100%);
   }
   .typing { display: inline-flex; gap: 4px; padding: 4px 0; }
   .typing span {
@@ -54,22 +93,81 @@
   .typing span:nth-child(2) { animation-delay: .2s; }
   .typing span:nth-child(3) { animation-delay: .4s; }
   @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  @keyframes streamReveal {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes statusPulse {
+    0% { transform: scale(.9); box-shadow: 0 0 0 0 currentColor; }
+    70% { transform: scale(1.05); box-shadow: 0 0 0 8px transparent; }
+    100% { transform: scale(.95); box-shadow: 0 0 0 0 transparent; }
+  }
+  @keyframes blockGlow {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-1px); }
+  }
+  @keyframes contentSweep {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
   footer { padding: 16px 24px 20px; border-top: 1px solid #23262f; }
   .input-box {
     max-width: 820px; margin: 0 auto; display: flex; gap: 10px;
     background: #1c1f27; border: 1px solid #2a2e39; border-radius: 12px; padding: 8px;
+    position: relative; transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
   }
   .input-box:focus-within { border-color: #4f6ef7; }
+  .input-box.busy { animation: composerPulse 1.8s ease-in-out infinite; }
+  .input-box.busy[data-phase="thinking"] {
+    border-color: #42507a; box-shadow: 0 0 0 4px rgba(79,110,247,.10);
+  }
+  .input-box.busy[data-phase="answering"] {
+    border-color: #2a5b4b; box-shadow: 0 0 0 4px rgba(95,217,164,.10);
+  }
+  @keyframes composerPulse {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-1px); }
+  }
   #input {
     flex: 1; background: transparent; border: none; outline: none; color: #e6e6e6;
     font-size: 14px; padding: 8px 10px; resize: none; max-height: 120px;
     font-family: inherit;
   }
   #send {
-    background: #4f6ef7; color: #fff; border: none; border-radius: 8px;
-    padding: 0 18px; font-size: 14px; cursor: pointer;
+    background: linear-gradient(135deg, #5d7bff, #4f6ef7); color: #fff; border: none; border-radius: 12px;
+    min-width: 92px; height: 44px; padding: 0 18px; font-size: 14px; cursor: pointer;
+    position: relative; overflow: hidden; transition: width .25s ease, min-width .25s ease,
+      border-radius .25s ease, background .25s ease, box-shadow .25s ease, transform .25s ease;
   }
-  #send:disabled { background: #33384a; cursor: not-allowed; }
+  #send:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(79,110,247,.22); }
+  #send .send-label { transition: opacity .2s ease, transform .2s ease; }
+  #send .send-orbit,
+  #send .send-core {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    opacity: 0; pointer-events: none;
+  }
+  #send .send-orbit {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.2); border-top-color: #fff;
+  }
+  #send .send-core {
+    width: 8px; height: 8px; border-radius: 50%; background: #fff;
+    box-shadow: 0 0 12px rgba(255,255,255,.5);
+  }
+  #send.busy {
+    min-width: 44px; width: 44px; padding: 0; border-radius: 50%;
+    background: transparent; border: 1px solid #4f6ef7;
+  }
+  #send.busy .send-label { opacity: 0; transform: scale(.8); }
+  #send.busy .send-orbit { opacity: 1; animation: orbitSpin 1s linear infinite; }
+  #send.busy .send-core { opacity: 1; }
+  #send.thinking { border-color: #6f87ff; box-shadow: 0 0 0 4px rgba(79,110,247,.12); }
+  #send.answering { border-color: #5fd9a4; box-shadow: 0 0 0 4px rgba(95,217,164,.12); }
+  #send:disabled { cursor: wait; }
+  @keyframes orbitSpin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
   .hint { max-width: 820px; margin: 8px auto 0; font-size: 12px; color: #666b78; text-align: center; }
   /* ===== 文档管理面板 ===== */
   #sidebar {
@@ -90,16 +188,30 @@
   .doc-item { background: #1c1f27; border: 1px solid #2a2e39; border-radius: 10px; padding: 10px 12px; font-size: 13px; }
   .doc-name { font-weight: 600; word-break: break-all; }
   .doc-meta { font-size: 11px; color: #8a8f9c; margin-top: 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .doc-extra { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .doc-line {
+    font-size: 11px; line-height: 1.6; color: #aab0c0; word-break: break-all;
+    background: #14161d; border: 1px solid #23262f; border-radius: 8px; padding: 6px 8px;
+  }
+  .doc-line .label { color: #8a8f9c; margin-right: 6px; }
   .badge { padding: 1px 8px; border-radius: 99px; font-size: 11px; }
-  .badge.READY { background: #14352a; color: #5fd9a4; }
+  .badge.PENDING { background: #1b2338; color: #8fb2ff; }
   .badge.PROCESSING { background: #3a2f14; color: #f0c96a; }
+  .badge.DONE { background: #14352a; color: #5fd9a4; }
   .badge.FAILED { background: #3a1414; color: #ff9b9b; }
+  .doc-item.failed { border-color: #5c1f1f; }
+  .doc-line.error {
+    color: #ffb4b4; background: #261516; border-color: #5c1f1f;
+  }
   .doc-actions { margin-top: 8px; display: flex; gap: 8px; }
   .doc-actions button {
     background: transparent; border: 1px solid #3a4052; color: #aab0c0;
     border-radius: 6px; font-size: 11px; padding: 3px 10px; cursor: pointer;
   }
   .doc-actions button:hover { border-color: #4f6ef7; color: #cdd5f5; }
+  .doc-actions button:disabled {
+    opacity: .45; cursor: not-allowed; border-color: #2a2e39; color: #7b8090;
+  }
   .doc-actions button.danger:hover { border-color: #5c1f1f; color: #ff9b9b; }
   .chunk-list { margin-top: 8px; display: none; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
   .chunk-list.open { display: flex; }
@@ -144,7 +256,11 @@
   <div class="input-box">
     <button id="attach" title="上传文档到知识库">📎</button>
     <textarea id="input" rows="1" placeholder="输入问题，Enter 发送，Shift+Enter 换行"></textarea>
-    <button id="send">发送</button>
+    <button id="send" aria-label="发送">
+      <span class="send-label">发送</span>
+      <span class="send-orbit"></span>
+      <span class="send-core"></span>
+    </button>
   </div>
   <div class="hint">流式输出 · 会话记忆保留最近 10 轮 · 📎 上传文档到知识库</div>
 </footer>
@@ -155,6 +271,7 @@
 const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('send');
+const inputBoxEl = document.querySelector('.input-box');
 const configWarn = document.getElementById('configWarn');
 let sessionId = localStorage.getItem('sessionId') || ('sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
 localStorage.setItem('sessionId', sessionId);
@@ -193,7 +310,7 @@ function createAssistantStream() {
   bubble.className = 'bubble assistant-stream';
 
   const thinkingBlock = document.createElement('div');
-  thinkingBlock.className = 'stream-block';
+  thinkingBlock.className = 'stream-block stream-thinking';
   const thinkingLabel = document.createElement('div');
   thinkingLabel.className = 'stream-label';
   thinkingLabel.textContent = '思考过程';
@@ -203,7 +320,7 @@ function createAssistantStream() {
   thinkingBlock.appendChild(thinkingContent);
 
   const answerBlock = document.createElement('div');
-  answerBlock.className = 'stream-block';
+  answerBlock.className = 'stream-block stream-answer';
   const answerLabel = document.createElement('div');
   answerLabel.className = 'stream-label';
   answerLabel.textContent = '最终答案';
@@ -216,13 +333,43 @@ function createAssistantStream() {
   bubble.appendChild(answerBlock);
   row.appendChild(bubble);
 
-  return { row, thinkingBlock, thinkingContent, answerBlock, answerContent };
+  return {
+    row,
+    thinkingBlock,
+    thinkingLabel,
+    thinkingContent,
+    answerBlock,
+    answerLabel,
+    answerContent
+  };
 }
 
-function setBusy(state) {
+function setBusy(state, phase = 'thinking') {
   busy = state;
   sendBtn.disabled = state;
   inputEl.disabled = state;
+  sendBtn.classList.toggle('busy', state);
+  sendBtn.classList.toggle('thinking', state && phase === 'thinking');
+  sendBtn.classList.toggle('answering', state && phase === 'answering');
+  inputBoxEl.classList.toggle('busy', state);
+  inputBoxEl.dataset.phase = state ? phase : '';
+  sendBtn.setAttribute('aria-label', state ? (phase === 'thinking' ? '正在思考' : '正在回答') : '发送');
+}
+
+function setStreamPhase(view, phase) {
+  if (!view) return;
+  view.thinkingBlock.classList.toggle('live', phase === 'thinking');
+  view.answerBlock.classList.toggle('live', phase === 'answering');
+  view.thinkingLabel.textContent = phase === 'thinking' ? '正在思考' : '思考过程';
+  view.answerLabel.textContent = phase === 'answering' ? '正在回答' : '最终答案';
+}
+
+function settleStream(view) {
+  if (!view) return;
+  view.thinkingBlock.classList.remove('live');
+  view.answerBlock.classList.remove('live');
+  view.thinkingLabel.textContent = '思考过程';
+  view.answerLabel.textContent = '最终答案';
 }
 
 async function send() {
@@ -231,7 +378,7 @@ async function send() {
   inputEl.value = '';
   inputEl.style.height = 'auto';
   addBubble('user', text);
-  setBusy(true);
+  setBusy(true, 'thinking');
   const typingEl = addTyping();
   let streamView = null;
   let thinking = '';
@@ -276,6 +423,8 @@ async function send() {
           if (!chunk) continue;
           thinking += chunk;
           const view = ensureStreamView();
+          setBusy(true, 'thinking');
+          setStreamPhase(view, 'thinking');
           view.thinkingBlock.classList.add('open');
           view.thinkingContent.textContent = thinking;
           messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
@@ -285,21 +434,32 @@ async function send() {
           if (!chunk) continue;
           answer += chunk;
           const view = ensureStreamView();
+          setBusy(true, 'answering');
+          setStreamPhase(view, 'answering');
+          // 收到第一个回答时，自动关闭思考框（处理网络中断后降级的场景）
+          if (answer === chunk && view.thinkingBlock.classList.contains('open')) {
+            view.thinkingBlock.classList.remove('open');
+          }
           view.answerBlock.classList.add('open');
           view.answerContent.textContent = answer;
           messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
+        } else if (evt.event === 'done') {
+          settleStream(streamView);
         } else if (evt.event === 'error') {
           let msg = evt.data;
           try { msg = JSON.parse(evt.data).message; } catch (e) {}
+          settleStream(streamView);
           addBubble('error', msg || '未知错误');
         }
       }
     }
   } catch (e) {
     if (typingEl.parentElement) typingEl.remove();
+    settleStream(streamView);
     addBubble('error', '请求失败: ' + e.message);
   } finally {
     setBusy(false);
+    settleStream(streamView);
     inputEl.focus();
   }
 }
@@ -322,6 +482,7 @@ const docList = document.getElementById('docList');
 const docCount = document.getElementById('docCount');
 const attachBtn = document.getElementById('attach');
 const toast = document.getElementById('toast');
+let documentPoller = null;
 
 function showToast(msg, ms = 2500) {
   toast.textContent = msg;
@@ -336,19 +497,29 @@ async function loadDocuments() {
     docCount.textContent = docs.length ? `(${docs.length})` : '';
     docList.innerHTML = '';
     for (const d of docs) docList.appendChild(renderDoc(d));
+    syncDocumentPolling(docs);
   } catch (e) { /* 服务未就绪时静默 */ }
 }
 
 function renderDoc(d) {
   const item = document.createElement('div');
   item.className = 'doc-item';
-  const date = (d.createdAt || '').slice(0, 10);
+  if (d.status === 'FAILED') item.classList.add('failed');
+  const date = formatDateTime(d.createdAt);
+  const status = getStatusMeta(d.status);
+  const pathHtml = d.filePath
+    ? `<div class="doc-line"><span class="label">路径</span>${escapeHtml(d.filePath)}</div>`
+    : '';
+  const errorHtml = d.errorMsg
+    ? `<div class="doc-line error"><span class="label">失败原因</span>${escapeHtml(d.errorMsg)}</div>`
+    : '';
   item.innerHTML = `
     <div class="doc-name"></div>
     <div class="doc-meta">
-      <span class="badge ${d.status}">${d.status}</span>
+      <span class="badge ${d.status}">${status.label}</span>
       <span>${d.chunkCount} 块</span><span>${date}</span>
     </div>
+    <div class="doc-extra">${pathHtml}${errorHtml}</div>
     <div class="doc-actions">
       <button class="chunks-btn">分块</button>
       <button class="danger del-btn">删除</button>
@@ -358,7 +529,12 @@ function renderDoc(d) {
 
   const listEl = item.querySelector('.chunk-list');
   let loaded = false;
-  item.querySelector('.chunks-btn').addEventListener('click', async () => {
+  const chunksBtn = item.querySelector('.chunks-btn');
+  if (d.status !== 'DONE') {
+    chunksBtn.disabled = true;
+    chunksBtn.title = '文档处理完成后才能查看分块';
+  }
+  chunksBtn.addEventListener('click', async () => {
     listEl.classList.toggle('open');
     if (loaded || !listEl.classList.contains('open')) return;
     try {
@@ -389,18 +565,57 @@ function renderDoc(d) {
 async function uploadDocument(file) {
   if (!file) return;
   if (!/\.(pdf|txt|md)$/i.test(file.name)) { showToast('仅支持 PDF / TXT / MD 文件'); return; }
-  showToast(`正在入库「${file.name}」…`, 60000);
+  showToast(`已提交入库任务：「${file.name}」`, 4000);
   try {
     const fd = new FormData();
     fd.append('file', file);
     const resp = await fetch('/api/ingest', { method: 'POST', body: fd });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const r = await resp.json();
-    showToast(`入库完成：「${r.name}」共 ${r.chunkCount} 个分块`);
+    showToast(`上传成功：「${r.name}」当前状态 ${getStatusMeta(r.status).label}`);
   } catch (e) {
     showToast('入库失败: ' + e.message);
   }
   loadDocuments();
+}
+
+function getStatusMeta(status) {
+  const map = {
+    PENDING: { label: '待处理' },
+    PROCESSING: { label: '处理中' },
+    DONE: { label: '已完成' },
+    FAILED: { label: '失败' }
+  };
+  return map[status] || { label: status || '未知' };
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 19);
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
+    + `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function syncDocumentPolling(docs) {
+  const hasRunningTask = docs.some(d => d.status === 'PENDING' || d.status === 'PROCESSING');
+  if (hasRunningTask && !documentPoller) {
+    documentPoller = setInterval(loadDocuments, 3000);
+  }
+  if (!hasRunningTask && documentPoller) {
+    clearInterval(documentPoller);
+    documentPoller = null;
+  }
 }
 
 dropZone.addEventListener('click', () => fileInput.click());
