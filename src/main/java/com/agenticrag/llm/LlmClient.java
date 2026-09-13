@@ -2,6 +2,9 @@ package com.agenticrag.llm;
 
 import com.agenticrag.config.LlmProperties;
 import com.agenticrag.llm.dto.ChatMessage;
+import com.agenticrag.llm.dto.LlmResponse;
+import com.agenticrag.llm.dto.ToolCall;
+import com.agenticrag.llm.dto.ToolSchema;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -19,14 +22,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-/**
- * OpenAI 兼容 LLM 客户端（手写实现，不依赖任何 AI 框架）
- * <p>
- * 支持流式 chat/completions：SSE 逐行解析 "data: {...}" 与 "data: [DONE]"，
- * 每个 delta 回调 onDelta，返回完整回答文本。
- */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -50,7 +49,7 @@ public class LlmClient {
             throw new LlmException("LLM 未配置：请设置 llm.base-url / llm.api-key / llm.model（推荐用环境变量 LLM_API_KEY 注入 key）");
         }
         try {
-            HttpResponse<java.io.InputStream> response = send(messages, true);
+            HttpResponse<java.io.InputStream> response = send(messages, true, Collections.emptyList());
             if (response.statusCode() != 200) {
                 String body = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
                 throw new LlmException("LLM 返回 " + response.statusCode() + ": " + extractErrorMessage(body, response.statusCode()));
@@ -81,7 +80,7 @@ public class LlmClient {
             throw new LlmException("LLM 未配置");
         }
         try {
-            HttpResponse<java.io.InputStream> response = send(messages, false);
+            HttpResponse<java.io.InputStream> response = send(messages, false, Collections.emptyList());
             if (response.statusCode() != 200) {
                 String body = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
                 throw new LlmException("LLM 返回 " + response.statusCode() + ": " + extractErrorMessage(body, response.statusCode()));
@@ -95,9 +94,35 @@ public class LlmClient {
         }
     }
 
+    public LlmResponse chatWithTools(List<ChatMessage> messages, List<ToolSchema> tools) {
+        if (!properties.isConfigured()) {
+            throw new LlmException("LLM 未配置");
+        }
+        try {
+            HttpResponse<java.io.InputStream> response = send(
+                    messages,
+                    false,
+                    tools == null ? Collections.emptyList() : tools
+            );
+            if (response.statusCode() != 200) {
+                String body = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
+                throw new LlmException("LLM 返回 " + response.statusCode() + ": " + extractErrorMessage(body, response.statusCode()));
+            }
+            JsonNode root = objectMapper.readTree(response.body());
+            JsonNode messageNode = root.path("choices").path(0).path("message");
+            String content = messageNode.path("content").asText("");
+            List<ToolCall> toolCalls = parseToolCalls(messageNode.path("tool_calls"));
+            return new LlmResponse(content, toolCalls);
+        } catch (LlmException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new LlmException("LLM 调用失败: " + e.getMessage(), e);
+        }
+    }
+
     // ==================== 内部实现 ====================
 
-    private HttpResponse<java.io.InputStream> send(List<ChatMessage> messages, boolean stream) throws Exception {
+    private HttpResponse<java.io.InputStream> send(List<ChatMessage> messages, boolean stream, List<ToolSchema> tools) throws Exception {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("model", properties.getChatModel());
         body.put("stream", stream);
@@ -106,6 +131,32 @@ public class LlmClient {
             ObjectNode node = messageNodes.addObject();
             node.put("role", message.role());
             node.put("content", message.content());
+            if (message.toolCallId() != null && !message.toolCallId().isBlank()) {
+                node.put("tool_call_id", message.toolCallId());
+            }
+            if (message.toolCalls() != null && !message.toolCalls().isEmpty()) {
+                ArrayNode toolCallNodes = node.putArray("tool_calls");
+                for (ToolCall toolCall : message.toolCalls()) {
+                    ObjectNode toolCallNode = toolCallNodes.addObject();
+                    toolCallNode.put("id", toolCall.id());
+                    toolCallNode.put("type", "function");
+                    ObjectNode functionNode = toolCallNode.putObject("function");
+                    functionNode.put("name", toolCall.name());
+                    functionNode.put("arguments", toolCall.argumentsJson());
+                }
+            }
+        }
+
+        if (tools != null && !tools.isEmpty()) {
+            ArrayNode toolNodes = body.putArray("tools");
+            for (ToolSchema tool : tools) {
+                ObjectNode toolNode = toolNodes.addObject();
+                toolNode.put("type", "function");
+                ObjectNode functionNode = toolNode.putObject("function");
+                functionNode.put("name", tool.name());
+                functionNode.put("description", tool.description());
+                functionNode.set("parameters", objectMapper.readTree(tool.parametersSchema()));
+            }
         }
 
         HttpRequest request = HttpRequest.newBuilder()
@@ -169,6 +220,21 @@ public class LlmClient {
             throw new LlmException("LLM 返回了空内容");
         }
         return full.toString();
+    }
+
+    private List<ToolCall> parseToolCalls(JsonNode toolCallsNode) {
+        if (toolCallsNode == null || !toolCallsNode.isArray()) {
+            return Collections.emptyList();
+        }
+        List<ToolCall> toolCalls = new ArrayList<>();
+        for (JsonNode toolCallNode : toolCallsNode) {
+            String id = toolCallNode.path("id").asText("");
+            JsonNode functionNode = toolCallNode.path("function");
+            String name = functionNode.path("name").asText("");
+            String argumentsJson = functionNode.path("arguments").asText("");
+            toolCalls.add(new ToolCall(id, name, argumentsJson));
+        }
+        return toolCalls;
     }
 
     private String extractErrorMessage(String body, int statusCode) {

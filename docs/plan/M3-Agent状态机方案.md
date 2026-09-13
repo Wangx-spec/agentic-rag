@@ -144,4 +144,4 @@ POST /api/chat {sessionId, message, agent: true}
 3. **单工具串行**：先保证循环正确性；并行工具在 M5 多 Agent 层面用 Worker 并行覆盖
 4. **maxRounds=5 硬上限**：成本与死循环防护，强制收敛而非放任
 5. **工具双来源（本地 + MCP），循环零感知**：MCP 不替代 function calling——它是工具的复用与共享层（跨项目跨团队一次实现、处处可用，M×N→M+N）；AgentLoop 只面对统一的 Tool 接口，本地实现与远程 MCP 工具无差别。若 T8 未做，接口抽象保持不变、后置不返工
-6. **对外的 MCP server 落 M7 U6**（2026-09-08 修订）：agentic-rag 反向暴露 `search_knowledge_base` 等能力，供其他 Agent/IDE/团队项目调用——「既是 MCP 消费者又是提供者」的完整闭环；与 playground 的 rag-service 模块同体（一次工作、两个产出）。详见 M7 方案第 2.4 节
+6. **对外的 MCP server 落 M10 U6**（2026-09-08 修订，2026-09-13 编号随企业级增量方案调整为 M10）：agentic-rag 反向暴露 `search_knowledge_base` 等能力，供其他 Agent/IDE/团队项目调用——「既是 MCP 消费者又是提供者」的完整闭环；与 playground 的 rag-service 模块同体（一次工作、两个产出）。详见 M10 方案第 2.4 节

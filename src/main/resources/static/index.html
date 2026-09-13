@@ -13,12 +13,42 @@
   header {
     padding: 14px 24px; border-bottom: 1px solid #23262f; display: flex; align-items: center; gap: 12px;
   }
+  header .head-main {
+    display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1;
+  }
+  header .head-actions {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end;
+  }
   header .logo {
     width: 32px; height: 32px; border-radius: 8px; background: #4f6ef7;
     display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff;
   }
   header h1 { font-size: 16px; font-weight: 600; }
   header .sub { font-size: 12px; color: #8a8f9c; }
+  .mode-picker {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px;
+    border: 1px solid #2a2e39; border-radius: 10px; background: #171b22;
+  }
+  .mode-picker label,
+  .session-chip .label { font-size: 12px; color: #8a8f9c; }
+  .mode-picker select {
+    background: transparent; border: none; outline: none; color: #e6e6e6;
+    font-size: 13px; font-family: inherit; cursor: pointer;
+  }
+  .session-chip {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px;
+    border: 1px solid #2a2e39; border-radius: 10px; background: #171b22;
+    min-width: 0; max-width: 260px;
+  }
+  .session-chip code {
+    font-size: 12px; color: #cdd5f5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .header-btn {
+    background: transparent; border: 1px solid #3a4052; color: #cdd5f5;
+    border-radius: 10px; padding: 8px 12px; font-size: 13px; cursor: pointer;
+    transition: border-color .2s ease, color .2s ease, transform .2s ease;
+  }
+  .header-btn:hover { border-color: #4f6ef7; transform: translateY(-1px); }
   #configWarn {
     display: none; background: #3a2f14; color: #f0c96a; font-size: 13px;
     padding: 10px 24px; border-bottom: 1px solid #4a3d1a;
@@ -66,6 +96,28 @@
     background: #171b22; border: 1px solid #2a2e39; border-radius: 10px;
     padding: 10px 12px; min-height: 44px; position: relative; overflow: hidden;
   }
+  .answer-content sup.citation-ref {
+    color: #8fb2ff; font-size: 11px; font-weight: 600; margin-left: 2px;
+  }
+  .source-panel {
+    display: none; flex-direction: column; gap: 8px; margin-top: 2px;
+    background: #161a22; border: 1px solid #2a2e39; border-radius: 10px; padding: 10px 12px;
+  }
+  .source-panel.open { display: flex; }
+  .source-title { font-size: 12px; color: #8a8f9c; }
+  .source-list { display: flex; flex-direction: column; gap: 8px; }
+  .source-item {
+    background: #11151c; border: 1px solid #23262f; border-radius: 8px; padding: 8px 10px;
+  }
+  .source-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px;
+  }
+  .source-index {
+    min-width: 22px; height: 22px; border-radius: 999px; background: #24314e; color: #9db8ff;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700;
+  }
+  .source-name { color: #d8deeb; font-weight: 600; }
+  .source-snippet { font-size: 12px; line-height: 1.7; color: #aab0c0; white-space: pre-wrap; word-break: break-word; }
   .stream-block.live .thinking-content,
   .stream-block.live .answer-content { animation: blockGlow 1.8s ease-in-out infinite; }
   .stream-block.live .thinking-content::after,
@@ -231,6 +283,11 @@
     background: #23262f; border: 1px solid #3a4052; color: #e6e6e6;
     font-size: 13px; padding: 8px 18px; border-radius: 8px; display: none; z-index: 10;
   }
+  @media (max-width: 1080px) {
+    header { align-items: flex-start; flex-direction: column; }
+    header .head-actions { width: 100%; justify-content: flex-start; }
+    .session-chip { max-width: 100%; }
+  }
 </style>
 </head>
 <body>
@@ -242,10 +299,29 @@
 </aside>
 <div id="chatCol">
 <header>
-  <div class="logo">A</div>
-  <div>
-    <h1>Agentic RAG</h1>
-    <div class="sub">Java 17 · Spring Boot 3 · 自研 Agent 引擎（M1 骨架）</div>
+  <div class="head-main">
+    <div class="logo">A</div>
+    <div>
+      <h1>Agentic RAG</h1>
+      <div class="sub">Java 17 · Spring Boot 3 · 模式切换 / 引用来源 / 会话记忆</div>
+    </div>
+  </div>
+  <div class="head-actions">
+    <div class="mode-picker">
+      <label for="modeSelect">模式</label>
+      <select id="modeSelect">
+        <option value="auto">自动</option>
+        <option value="plain">普通对话</option>
+        <option value="rag">知识库问答</option>
+        <option value="agent">Agent</option>
+        <option value="multi-agent">多 Agent</option>
+      </select>
+    </div>
+    <div class="session-chip">
+      <span class="label">会话</span>
+      <code id="sessionLabel"></code>
+    </div>
+    <button id="newSessionBtn" class="header-btn" type="button">新会话</button>
   </div>
 </header>
 <div id="configWarn">LLM 未配置：请设置环境变量 LLM_API_KEY 后重启服务（详见 README）</div>
@@ -273,9 +349,20 @@ const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('send');
 const inputBoxEl = document.querySelector('.input-box');
 const configWarn = document.getElementById('configWarn');
-let sessionId = localStorage.getItem('sessionId') || ('sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
-localStorage.setItem('sessionId', sessionId);
+const modeSelect = document.getElementById('modeSelect');
+const sessionLabel = document.getElementById('sessionLabel');
+const newSessionBtn = document.getElementById('newSessionBtn');
+const SESSION_STORAGE_KEY = 'sessionId';
+const MODE_STORAGE_KEY = 'chatMode';
+const AVAILABLE_MODES = new Set(['auto', 'plain', 'rag', 'agent']);
+let sessionId = localStorage.getItem(SESSION_STORAGE_KEY) || createSessionId();
+let currentMode = localStorage.getItem(MODE_STORAGE_KEY) || 'auto';
+if (!AVAILABLE_MODES.has(currentMode)) currentMode = 'auto';
+localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+localStorage.setItem(MODE_STORAGE_KEY, currentMode);
 let busy = false;
+modeSelect.value = currentMode;
+updateSessionLabel();
 
 fetch('/api/health').then(r => r.json()).then(h => {
   if (h && h.llmConfigured === false) configWarn.style.display = 'block';
@@ -329,8 +416,19 @@ function createAssistantStream() {
   answerBlock.appendChild(answerLabel);
   answerBlock.appendChild(answerContent);
 
+  const sourcePanel = document.createElement('div');
+  sourcePanel.className = 'source-panel';
+  const sourceTitle = document.createElement('div');
+  sourceTitle.className = 'source-title';
+  sourceTitle.textContent = '引用来源';
+  const sourceList = document.createElement('div');
+  sourceList.className = 'source-list';
+  sourcePanel.appendChild(sourceTitle);
+  sourcePanel.appendChild(sourceList);
+
   bubble.appendChild(thinkingBlock);
   bubble.appendChild(answerBlock);
+  bubble.appendChild(sourcePanel);
   row.appendChild(bubble);
 
   return {
@@ -340,7 +438,9 @@ function createAssistantStream() {
     thinkingContent,
     answerBlock,
     answerLabel,
-    answerContent
+    answerContent,
+    sourcePanel,
+    sourceList
   };
 }
 
@@ -397,7 +497,7 @@ async function send() {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: sessionId, message: text })
+      body: JSON.stringify({ sessionId: sessionId, message: text, mode: currentMode })
     });
     if (!resp.ok || !resp.body) {
       const errText = await resp.text().catch(() => '');
@@ -441,9 +541,16 @@ async function send() {
             view.thinkingBlock.classList.remove('open');
           }
           view.answerBlock.classList.add('open');
-          view.answerContent.textContent = answer;
+          view.answerContent.innerHTML = renderAssistantAnswer(answer);
           messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
         } else if (evt.event === 'done') {
+          const view = ensureStreamView();
+          try {
+            const payload = JSON.parse(evt.data);
+            renderSources(view, payload.sources || []);
+          } catch (e) {
+            renderSources(view, []);
+          }
           settleStream(streamView);
         } else if (evt.event === 'error') {
           let msg = evt.data;
@@ -473,6 +580,34 @@ function parseSse(raw) {
   }
   if (dataLines.length === 0) return null;
   return { event: event, data: dataLines.join('\n') };
+}
+
+function renderAssistantAnswer(text) {
+  return escapeHtml(text)
+    .replace(/\[(\d+)\]/g, '<sup class="citation-ref">[$1]</sup>')
+    .replace(/\n/g, '<br>');
+}
+
+function renderSources(view, sources) {
+  if (!view) return;
+  view.sourceList.innerHTML = '';
+  if (!Array.isArray(sources) || sources.length === 0) {
+    view.sourcePanel.classList.remove('open');
+    return;
+  }
+  for (const source of sources) {
+    const item = document.createElement('div');
+    item.className = 'source-item';
+    item.innerHTML = `
+      <div class="source-head">
+        <span class="source-index">[${escapeHtml(source.n ?? '?')}]</span>
+        <span class="source-name">${escapeHtml(source.docName || '未命名文档')}</span>
+      </div>
+      <div class="source-snippet">${escapeHtml(source.snippet || '')}</div>
+    `;
+    view.sourceList.appendChild(item);
+  }
+  view.sourcePanel.classList.add('open');
 }
 
 /* ===== 文档管理 ===== */
@@ -632,6 +767,29 @@ dropZone.addEventListener('drop', e => uploadDocument(e.dataTransfer.files[0]));
 loadDocuments();
 
 sendBtn.addEventListener('click', send);
+modeSelect.addEventListener('change', () => {
+  currentMode = modeSelect.value || 'auto';
+  localStorage.setItem(MODE_STORAGE_KEY, currentMode);
+  showToast(`已切换为${modeSelect.options[modeSelect.selectedIndex].text}`);
+});
+newSessionBtn.addEventListener('click', async () => {
+  if (busy) return;
+  const oldSessionId = sessionId;
+  sessionId = createSessionId();
+  localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+  messagesEl.innerHTML = '';
+  updateSessionLabel();
+  inputEl.focus();
+  showToast('已开始新会话');
+  try {
+    const resp = await fetch(`/api/memory/${encodeURIComponent(oldSessionId)}`, { method: 'DELETE' });
+    if (resp.ok || resp.status === 204) {
+      showToast('已开始新会话，并清理旧会话记忆');
+    }
+  } catch (e) {
+    // T7 未完成前，接口可能不存在；这里静默跳过
+  }
+});
 inputEl.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
@@ -640,6 +798,15 @@ inputEl.addEventListener('input', () => {
   inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
 });
 inputEl.focus();
+
+function createSessionId() {
+  return 'sess-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+function updateSessionLabel() {
+  sessionLabel.textContent = sessionId;
+  sessionLabel.title = sessionId;
+}
 </script>
 </body>
 </html>

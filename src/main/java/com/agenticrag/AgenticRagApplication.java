@@ -1,7 +1,9 @@
 package com.agenticrag;
 
 import com.agenticrag.config.LlmProperties;
+import com.agenticrag.config.McpProperties;
 import com.agenticrag.config.RagProperties;
+import com.agenticrag.intent.IntentProperties;
 import com.agenticrag.rag.dto.Document;
 import com.agenticrag.rag.ingest.DocumentRepository;
 import com.agenticrag.rag.ingest.IngestTaskQueue;
@@ -11,13 +13,14 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
 import java.util.List;
 
 @SpringBootApplication
-@EnableConfigurationProperties({LlmProperties.class, RagProperties.class})
+@EnableConfigurationProperties({LlmProperties.class, RagProperties.class, McpProperties.class, IntentProperties.class})
 public class AgenticRagApplication {
 
     private static final Logger log = LoggerFactory.getLogger(AgenticRagApplication.class);
@@ -27,6 +30,7 @@ public class AgenticRagApplication {
     }
 
     @Bean
+    @ConditionalOnBean({DocumentRepository.class, IngestTaskQueue.class})
     public ApplicationRunner recoveryRunner(DocumentRepository documentRepository,
                                             IngestTaskQueue ingestTaskQueue) {
         return (ApplicationArguments args) -> {

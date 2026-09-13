@@ -9,20 +9,34 @@ spring:
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
   sql:
     init:
       mode: always
       schema-locations: classpath:db/init.sql
- 
+
+
 rag:
   chunk-size: 500
   chunk-overlap: 50
   top-k: 10
   final-top-n: 5
   rrf-k: 60
-  embedding-dim: ${RAG_EMBEDDING_DIM:4096} # 与 embedding-model 一致：Qwen3-Embedding-8B=4096，bge-m3=1024
+  embedding-dim: ${RAG_EMBEDDING_DIM:4096}
   data-dir: ./data
   min-chunk-size: 80
+  memory:
+    type: ${RAG_MEMORY_TYPE:memory}
+  intent:
+    enabled: ${RAG_INTENT_ENABLED:true}
+    base-url: ${RAG_INTENT_BASE_URL:}
+    model: ${RAG_INTENT_MODEL:}
+    api-key: ${RAG_INTENT_API_KEY:}
+    timeout-seconds: ${RAG_INTENT_TIMEOUT_SECONDS:5}
+    confidence-threshold: ${RAG_INTENT_CONFIDENCE_THRESHOLD:0.6}
   vector:
     type: qdrant
     qdrant:
@@ -43,6 +57,15 @@ llm:
   timeout-seconds: 60
   max-agent-rounds: 5
   memory-rounds: 10
+
+
+mcp:
+  enabled: ${MCP_ENABLED:false}
+  server:
+    url: ${MCP_SERVER_URL:}
+    stdio:
+      command: ${MCP_STDIO_COMMAND:}
+      args: ${MCP_STDIO_ARGS:}
 
 logging:
   level:
