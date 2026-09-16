@@ -20,6 +20,9 @@ public class ExecutorConfig {
         executor.setMaxPoolSize(8);
         executor.setQueueCapacity(32);
         executor.setThreadNamePrefix("multiAgent-");
+        // daemon 线程：非 web 模式（如 eval 批跑）主线程返回后 JVM 可正常退出，
+        // 否则空闲的池工作线程会一直阻塞 JVM 退出；web 模式由 Tomcat 持有 JVM，关闭行为不变
+        executor.setDaemon(true);
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);

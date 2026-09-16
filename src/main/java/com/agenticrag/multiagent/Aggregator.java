@@ -4,11 +4,9 @@ import com.agenticrag.llm.LlmClient;
 import com.agenticrag.llm.dto.ChatMessage;
 import com.agenticrag.multiagent.dto.SubTaskResult;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
+import com.agenticrag.service.ChatEventSink;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-
-import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,13 +40,13 @@ public class Aggregator {
 
     private final LlmClient llmClient;
 
-    public AggregateResult aggregate(String question, List<SubTaskResult> results, SseEmitter emitter) {
+    public AggregateResult aggregate(String question, List<SubTaskResult> results, ChatEventSink sink) {
         List<RetrievedChunk> mergedSources = mergeSources(results);
         String prompt = buildAggregatePrompt(question, results, mergedSources);
         String answer = llmClient.chatStream(List.of(ChatMessage.system(prompt)), new LlmClient.StreamListener() {
             @Override
             public void onAnswer(String delta) {
-                send(emitter, "delta", Map.of("text", delta));
+                sink.onDelta(delta);
             }
         });
         return new AggregateResult(answer, mergedSources);
@@ -108,14 +106,6 @@ public class Aggregator {
             ));
         }
         return merged;
-    }
-
-    private void send(SseEmitter emitter, String event, Object data) {
-        try {
-            emitter.send(SseEmitter.event().name(event).data(data));
-        } catch (IOException ignored) {
-            // 与 ChatController 的 SSE 发送策略保持一致：发送失败时交给容器回调处理
-        }
     }
 
     public record AggregateResult(String answer, List<RetrievedChunk> sources) {

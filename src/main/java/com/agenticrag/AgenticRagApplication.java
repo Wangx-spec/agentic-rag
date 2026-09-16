@@ -3,6 +3,7 @@ package com.agenticrag;
 import com.agenticrag.config.LlmProperties;
 import com.agenticrag.config.McpProperties;
 import com.agenticrag.config.RagProperties;
+import com.agenticrag.eval.EvalProperties;
 import com.agenticrag.intent.IntentProperties;
 import com.agenticrag.rag.dto.Document;
 import com.agenticrag.rag.ingest.DocumentRepository;
@@ -20,7 +21,7 @@ import org.springframework.context.annotation.Bean;
 import java.util.List;
 
 @SpringBootApplication
-@EnableConfigurationProperties({LlmProperties.class, RagProperties.class, McpProperties.class, IntentProperties.class})
+@EnableConfigurationProperties({LlmProperties.class, RagProperties.class, McpProperties.class, IntentProperties.class, EvalProperties.class})
 public class AgenticRagApplication {
 
     private static final Logger log = LoggerFactory.getLogger(AgenticRagApplication.class);

@@ -4,15 +4,12 @@ import com.agenticrag.llm.dto.ChatMessage;
 import com.agenticrag.memory.ConversationMemory;
 import com.agenticrag.multiagent.dto.SubTaskResult;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
+import com.agenticrag.service.ChatEventSink;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,34 +35,35 @@ class MultiAgentOrchestratorTest {
 
     @Test
     void orchestrateRunsAggregatorWhenAtLeastOneSubTaskSucceeds() {
-        CapturingSseEmitter emitter = new CapturingSseEmitter();
+        List<String> payloads = new ArrayList<>();
         RetrievedChunk chunk = new RetrievedChunk(1L, 10L, 1, "片段", "guide.md", 1.0, 1);
+        ChatEventSink sink = new CapturingSink(payloads);
         when(leaderAgent.plan("总问题")).thenReturn(List.of("q1", "q2"));
         when(subAgentExecutor.execute("q1", 1)).thenReturn(SubTaskResult.ok(1, "q1", "结论1", List.of(chunk)));
         when(subAgentExecutor.execute("q2", 2)).thenReturn(SubTaskResult.failure(2, "q2", "检索无结果"));
-        when(aggregator.aggregate(eq("总问题"), any(), eq(emitter)))
+        when(aggregator.aggregate(eq("总问题"), any(), eq(sink)))
                 .thenReturn(new Aggregator.AggregateResult("最终回答", List.of(chunk)));
 
-        boolean handled = orchestrator.orchestrate("总问题", emitter, "s1");
+        boolean handled = orchestrator.orchestrate("总问题", sink, "s1");
 
         assertTrue(handled);
-        assertTrue(emitter.completed);
-        assertTrue(emitter.payloads.stream().anyMatch(text -> text.contains("拆解完成")));
-        assertTrue(emitter.payloads.stream().anyMatch(text -> text.contains("子任务 1 开始")));
-        assertTrue(emitter.payloads.stream().anyMatch(text -> text.contains("子任务 1 完成")));
-        assertTrue(emitter.payloads.stream().anyMatch(text -> text.contains("开始汇总回答")));
+        assertTrue(payloads.stream().anyMatch(text -> text.contains("拆解完成")));
+        assertTrue(payloads.stream().anyMatch(text -> text.contains("子任务 1 开始")));
+        assertTrue(payloads.stream().anyMatch(text -> text.contains("子任务 1 完成")));
+        assertTrue(payloads.stream().anyMatch(text -> text.contains("开始汇总回答")));
+        assertTrue(payloads.stream().anyMatch(text -> text.contains("done:1")));
         ArgumentCaptor<List<SubTaskResult>> captor = ArgumentCaptor.forClass(List.class);
-        verify(aggregator).aggregate(eq("总问题"), captor.capture(), eq(emitter));
+        verify(aggregator).aggregate(eq("总问题"), captor.capture(), eq(sink));
         assertTrue(captor.getValue().size() == 1 && captor.getValue().get(0).success());
         verify(memory).append("s1", ChatMessage.assistant("最终回答"));
     }
 
     @Test
     void orchestrateReturnsFalseWhenLeaderProducesSingleQuestion() {
-        CapturingSseEmitter emitter = new CapturingSseEmitter();
+        ChatEventSink sink = new CapturingSink(new ArrayList<>());
         when(leaderAgent.plan("单问题")).thenReturn(List.of("单问题"));
 
-        boolean handled = orchestrator.orchestrate("单问题", emitter, "s1");
+        boolean handled = orchestrator.orchestrate("单问题", sink, "s1");
 
         assertFalse(handled);
         verify(subAgentExecutor, never()).execute(any(), any(Integer.class));
@@ -75,33 +73,33 @@ class MultiAgentOrchestratorTest {
 
     @Test
     void orchestrateReturnsFalseWhenAllSubTasksFail() {
-        CapturingSseEmitter emitter = new CapturingSseEmitter();
+        ChatEventSink sink = new CapturingSink(new ArrayList<>());
         when(leaderAgent.plan("总问题")).thenReturn(List.of("q1", "q2"));
         when(subAgentExecutor.execute("q1", 1)).thenReturn(SubTaskResult.failure(1, "q1", "失败1"));
         when(subAgentExecutor.execute("q2", 2)).thenReturn(SubTaskResult.failure(2, "q2", "失败2"));
 
-        boolean handled = orchestrator.orchestrate("总问题", emitter, "s1");
+        boolean handled = orchestrator.orchestrate("总问题", sink, "s1");
 
         assertFalse(handled);
         verify(aggregator, never()).aggregate(any(), any(), any());
         verify(memory, never()).append(any(), any());
     }
 
-    static class CapturingSseEmitter extends SseEmitter {
-        final List<String> payloads = new ArrayList<>();
-        boolean completed;
+    static class CapturingSink implements ChatEventSink {
+        private final List<String> payloads;
 
-        @Override
-        public synchronized void send(SseEventBuilder builder) throws IOException {
-            Set<ResponseBodyEmitter.DataWithMediaType> built = builder.build();
-            for (ResponseBodyEmitter.DataWithMediaType item : built) {
-                payloads.add(String.valueOf(item.getData()));
-            }
+        private CapturingSink(List<String> payloads) {
+            this.payloads = payloads;
         }
 
         @Override
-        public synchronized void complete() {
-            completed = true;
+        public void onThinking(String text) {
+            payloads.add(text);
+        }
+
+        @Override
+        public void onDone(List<RetrievedChunk> sources) {
+            payloads.add("done:" + sources.size());
         }
     }
 }
