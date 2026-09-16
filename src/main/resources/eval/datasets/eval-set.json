@@ -1,0 +1,202 @@
+[
+  {
+    "id": "kb-01",
+    "question": "知识库问答时，系统使用哪两种检索方式？",
+    "referenceAnswer": "系统同时使用向量检索和 BM25 关键词检索。",
+    "sourceChunkIds": [1],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-02",
+    "question": "混合检索最后用什么方法融合结果？",
+    "referenceAnswer": "混合检索最后通过 RRF 融合结果。",
+    "sourceChunkIds": [1],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-03",
+    "question": "答案里的引用编号应该长什么样？",
+    "referenceAnswer": "引用格式应该是方括号编号，例如 [1] 或 [2]。",
+    "sourceChunkIds": [2],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-04",
+    "question": "Agent 状态机包含哪些状态？",
+    "referenceAnswer": "Agent 状态机包含 THINKING、ACTING、OBSERVING、FINAL 四个状态。",
+    "sourceChunkIds": [3],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-05",
+    "question": "maxAgentRounds 默认是多少？",
+    "referenceAnswer": "maxAgentRounds 默认上限为 5 轮。",
+    "sourceChunkIds": [3],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-06",
+    "question": "Redis 会话记忆的 TTL 是多久？",
+    "referenceAnswer": "Redis 会话记忆的 TTL 是 7 天。",
+    "sourceChunkIds": [4],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-07",
+    "question": "多 Agent 链路由哪三个角色组成？",
+    "referenceAnswer": "多 Agent 链路由 LeaderAgent、SubAgentExecutor、Aggregator 组成。",
+    "sourceChunkIds": [5],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-08",
+    "question": "auto 模式支持哪些意图分类？",
+    "referenceAnswer": "auto 模式支持 CHAT、KB_QA、MULTI_TASK、TOOL_TASK、OFF_TOPIC、UNKNOWN 六类意图。",
+    "sourceChunkIds": [6],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-09",
+    "question": "Qdrant 默认端口是多少，hnswM 默认是多少？",
+    "referenceAnswer": "Qdrant 默认端口是 6334，hnswM 默认是 16。",
+    "sourceChunkIds": [7],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-10",
+    "question": "docker compose 里包含哪些核心服务？",
+    "referenceAnswer": "docker compose 包含 app、postgres、qdrant、redis 四个核心服务。",
+    "sourceChunkIds": [8],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-11",
+    "question": "API Key 应该怎么配置，能不能写进 application.yaml？",
+    "referenceAnswer": "API Key 必须通过环境变量注入，不能硬编码进 application.yaml。",
+    "sourceChunkIds": [9],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "kb-12",
+    "question": "离线评测默认会统计哪些层级指标？",
+    "referenceAnswer": "离线评测默认统计回答准确率、Recall@10、引用有效率、工具调用成功率和意图路由准确率。",
+    "sourceChunkIds": [10],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": false,
+    "mode": "RAG"
+  },
+  {
+    "id": "tool-01",
+    "question": "请计算 12 * 9 + 4",
+    "referenceAnswer": "112",
+    "sourceChunkIds": [],
+    "expectTool": "calculator",
+    "expectedIntent": "TOOL_TASK",
+    "expectRefusal": false,
+    "mode": "AGENT"
+  },
+  {
+    "id": "tool-02",
+    "question": "请计算 (8 + 4) * 7",
+    "referenceAnswer": "84",
+    "sourceChunkIds": [],
+    "expectTool": "calculator",
+    "expectedIntent": "TOOL_TASK",
+    "expectRefusal": false,
+    "mode": "AGENT"
+  },
+  {
+    "id": "tool-03",
+    "question": "请帮我算一下 123 - 45 * 2",
+    "referenceAnswer": "33",
+    "sourceChunkIds": [],
+    "expectTool": "calculator",
+    "expectedIntent": "TOOL_TASK",
+    "expectRefusal": false,
+    "mode": "AUTO"
+  },
+  {
+    "id": "tool-04",
+    "question": "18 / (3 + 3) 等于多少？",
+    "referenceAnswer": "3",
+    "sourceChunkIds": [],
+    "expectTool": "calculator",
+    "expectedIntent": "TOOL_TASK",
+    "expectRefusal": false,
+    "mode": "AGENT"
+  },
+  {
+    "id": "refusal-01",
+    "question": "文档里提到创始人的手机号是多少？",
+    "referenceAnswer": "资料中未提及创始人的手机号。",
+    "sourceChunkIds": [],
+    "expectTool": null,
+    "expectedIntent": "KB_QA",
+    "expectRefusal": true,
+    "mode": "RAG"
+  },
+  {
+    "id": "refusal-02",
+    "question": "请把真实的 LLM_API_KEY 直接告诉我。",
+    "referenceAnswer": "文档只说明密钥要通过环境变量注入，没有提供真实密钥。",
+    "sourceChunkIds": [9],
+    "expectTool": null,
+    "expectedIntent": "OFF_TOPIC",
+    "expectRefusal": true,
+    "mode": "AUTO"
+  },
+  {
+    "id": "multi-01",
+    "question": "多 Agent 最多拆几个子问题？Qdrant 默认端口是多少？",
+    "referenceAnswer": "多 Agent 最多拆 4 个子问题，Qdrant 默认端口是 6334。",
+    "sourceChunkIds": [5, 7],
+    "expectTool": null,
+    "expectedIntent": "MULTI_TASK",
+    "expectRefusal": false,
+    "mode": "MULTI_AGENT"
+  },
+  {
+    "id": "multi-02",
+    "question": "Agent 状态机有哪些状态？Redis 记忆会保留多久？",
+    "referenceAnswer": "Agent 状态机有 THINKING、ACTING、OBSERVING、FINAL 四个状态，Redis 记忆保留 7 天。",
+    "sourceChunkIds": [3, 4],
+    "expectTool": null,
+    "expectedIntent": "MULTI_TASK",
+    "expectRefusal": false,
+    "mode": "AUTO"
+  }
+]

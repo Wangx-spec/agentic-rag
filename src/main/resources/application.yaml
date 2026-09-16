@@ -1,14 +1,14 @@
 server:
-  port: 8081
+  port: ${SERVER_PORT:8081}
 
 spring:
   application:
     name: agentic-rag
   datasource:
-    url: jdbc:postgresql://localhost:5432/agentic_rag
-    username: postgres
-    password: postgres
-    driver-class-name: org.postgresql.Driver
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/agentic_rag}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: ${SPRING_DATASOURCE_DRIVER_CLASS_NAME:org.postgresql.Driver}
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}
@@ -26,7 +26,7 @@ rag:
   final-top-n: 5
   rrf-k: 60
   embedding-dim: ${RAG_EMBEDDING_DIM:4096}
-  data-dir: ./data
+  data-dir: ${RAG_DATA_DIR:./data}
   min-chunk-size: 80
   memory:
     type: ${RAG_MEMORY_TYPE:memory}
@@ -38,14 +38,14 @@ rag:
     timeout-seconds: ${RAG_INTENT_TIMEOUT_SECONDS:5}
     confidence-threshold: ${RAG_INTENT_CONFIDENCE_THRESHOLD:0.6}
   vector:
-    type: qdrant
+    type: ${RAG_VECTOR_TYPE:qdrant}
     qdrant:
-      host: localhost
-      port: 6334
-      collection-prefix: agentic_rag_chunks
-      hnsw-m: 16
-      ef-construct: 100
-      search-ef: 100
+      host: ${RAG_VECTOR_QDRANT_HOST:localhost}
+      port: ${RAG_VECTOR_QDRANT_PORT:6334}
+      collection-prefix: ${RAG_VECTOR_QDRANT_COLLECTION_PREFIX:agentic_rag_chunks}
+      hnsw-m: ${RAG_VECTOR_QDRANT_HNSW_M:16}
+      ef-construct: ${RAG_VECTOR_QDRANT_EF_CONSTRUCT:100}
+      search-ef: ${RAG_VECTOR_QDRANT_SEARCH_EF:100}
 
 # LLM 配置（OpenAI 兼容接口）
 # API Key 必须通过环境变量注入，禁止在仓库中保存真实密钥
@@ -66,6 +66,14 @@ mcp:
     stdio:
       command: ${MCP_STDIO_COMMAND:}
       args: ${MCP_STDIO_ARGS:}
+
+# 离线评测配置（跨 profile 生效：零依赖 eval profile 与真实栈默认 profile 共用）
+eval:
+  bench: ${EVAL_BENCH:internal}          # internal | enterpriserag
+  enterprise-rag:
+    corpus-dir: ${EVAL_ERAG_CORPUS:./data/enterpriserag-md}
+    answers-path: ${EVAL_ERAG_ANSWERS:./eval-answers/answers.jsonl}
+    report-path: ${EVAL_ERAG_REPORT:./enterpriserag-report.md}
 
 logging:
   level:
