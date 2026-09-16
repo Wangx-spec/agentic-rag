@@ -14,7 +14,7 @@
 | M3 Agent | [M3-Agent状态机方案.md](M3-Agent状态机方案.md) | ✅ 完成 | 状态机 + function calling 工具循环 + 参数校验 |
 | M4 体验 | [M4-体验升级方案.md](M4-体验升级方案.md) | 🔄 进行中 | 溯源 UI + Redis 持久记忆 + 意图识别（独立小模型可配）+ 前端四模式 |
 | M5 多 Agent | [M5-多Agent方案.md](M5-多Agent方案.md) | 📋 待开发 | Leader 拆解 → SubAgent 并行 → Aggregator 汇总 |
-| M6 收口 | [M6-工程化与评测方案.md](M6-工程化与评测方案.md) | 📋 待开发 | 评测闭环 + Dockerfile + K8s + README 完整化 |
+| M6 收口 | [M6-工程化与评测方案.md](M6-工程化与评测方案.md) | 🔄 进行中 | 评测闭环 + Dockerfile + K8s + README 完整化（含 EnterpriseRAG-Bench 外部基准，[接入 Runbook](M6-EnterpriseRAG-Bench接入Runbook.md)） |
 | M7 多知识库 | [M7-多知识库方案.md](M7-多知识库方案.md) | 📋 待开发（M6 后） | 库实体 + kb_id 贯穿 + 检索过滤 + 库选择器 |
 | M8 多用户 | [M8-多用户方案.md](M8-多用户方案.md) | 📋 待开发（M7 后） | Sa-Token 鉴权 + owner 归属隔离 + 登录态前端（记忆隔离已由 M9 提前完成） |
 | M9 记忆 | [M9-记忆方案/](M9-记忆方案/)（spec→plan→task→checklist 四份） | 📋 待开发（M4 后） | 三层记忆（持久化+滑动摘要+实体画像+长期向量）+ 读编排 + 检索工具 + 批量写回 |

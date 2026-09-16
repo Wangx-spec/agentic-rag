@@ -1,62 +1,120 @@
 # agentic-rag
 
-从零自研的 Java Agentic RAG 平台（简化版）。
+从零自研的 Java 17 Agentic RAG 项目：包含混合检索、Agent 工具循环、多 Agent 编排、会话记忆，以及 M6 引入的离线评测、容器化和 K8s 最小部署清单。
 
-**当前进度：M1 骨架** —— LLM 流式对话 + Web 聊天界面，可运行。后续里程碑见 `dev-plan/自研AgenticRAG-MVP方案.md`（在 ragent 工作区）。
+## 架构图
 
-## 技术栈
-
-Java 17 · Spring Boot 3.3 · 手写 OpenAI 兼容客户端（`java.net.http` + SSE 解析，不依赖任何 AI 框架）· 原生 HTML 前端（零构建）
-
-## 快速运行（3 步）
-
-```bash
-# 1. 配置 API Key（OpenAI 兼容接口，任选一家）
-export LLM_API_KEY=sk-xxx
-# 可选：自定义服务与模型
-# export LLM_BASE_URL=https://api.siliconflow.cn/v1
-# export LLM_MODEL=Qwen/Qwen2.5-72B-Instruct
-
-# 2. 启动（首次会自动下载 Maven 与依赖）
-./mvnw spring-boot:run
-
-# 3. 打开页面
-# http://localhost:8080
+```mermaid
+flowchart LR
+    UI[Web Frontend] --> API[ChatController]
+    API --> SVC[ChatService]
+    SVC --> AUTO[Auto Route]
+    SVC --> PLAIN[Plain]
+    SVC --> RAG[RAG]
+    SVC --> AGENT[Agent]
+    SVC --> MA[Multi-Agent]
+    AUTO --> Intent[IntentClassifier]
+    RAG --> Retriever[HybridRetriever]
+    AGENT --> Loop[AgentLoop]
+    MA --> Leader[LeaderAgent]
+    MA --> Worker[SubAgentExecutor]
+    MA --> Agg[Aggregator]
+    Retriever --> PG[(PostgreSQL)]
+    Retriever --> BM25[(SQLite FTS/BM25)]
+    Retriever --> Qdrant[(Qdrant)]
+    SVC --> Memory[(Memory/Redis)]
+    Loop --> Tools[Calculator / Search KB / MCP]
+    SVC --> LLM[OpenAI-Compatible LLM]
 ```
 
-## 接口
+## 快速开始
+
+### 1. 本地启动
+
+```bash
+export LLM_API_KEY=sk-xxx
+export LLM_BASE_URL=https://api.siliconflow.cn/v1
+export LLM_CHAT_MODEL=zai-org/GLM-5.3
+export LLM_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-8B
+
+docker compose up -d postgres qdrant redis
+./mvnw spring-boot:run
+```
+
+页面地址：`http://localhost:8081`
+
+### 2. 一条命令拉起容器环境
+
+```bash
+export LLM_API_KEY=sk-xxx
+docker compose up -d --build
+```
+
+健康检查：
+
+```bash
+curl http://localhost:8081/api/health
+```
+
+### 3. K8s 最小部署
+
+```bash
+kubectl apply -f deploy/k8s/configmap.yaml
+kubectl apply -f deploy/k8s/deployment.yaml
+kubectl apply -f deploy/k8s/service.yaml
+```
+
+`deployment.yaml` 里预留了 `agentic-rag-secrets/LLM_API_KEY` 的 Secret 引用。
+
+## 评测
+
+M6 提供了 `eval` profile，会使用内置语料自动入库并跑离线评测。
+
+```bash
+export LLM_API_KEY=sk-xxx
+./mvnw spring-boot:run -Dspring-boot.run.profiles=eval
+```
+
+运行结果会输出到项目根目录的 `eval-report.md`，包含：
+
+- 回答准确率（关键词 F1）
+- Recall@10
+- 引用有效率
+- 工具调用成功率
+- 意图路由准确率
+- 每题明细
+
+## API
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/chat` | 流式对话（SSE：`delta` 增量 → `done` / `error`），body: `{"sessionId":"...","message":"..."}` |
-| GET | `/api/health` | 健康检查 + LLM 配置状态 |
+| POST | `/api/chat` | SSE 聊天入口，body: `{"sessionId":"s1","message":"...","mode":"auto|plain|rag|agent|multi-agent"}` |
+| DELETE | `/api/memory/{sessionId}` | 清空会话记忆 |
+| GET | `/api/health` | 健康检查 |
+| POST | `/api/ingest` | 文档入库 |
+| GET | `/api/documents` | 查看文档列表 |
 
-```bash
-# curl 测试流式输出
-curl -N -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message":"你好，介绍一下你自己"}'
-```
+SSE 事件：
 
-## 项目结构（MVP 分层）
+| event | 含义 |
+|---|---|
+| `thinking` | 思考过程 / 路由 / 工具 / 多 Agent 阶段事件 |
+| `delta` | 回答流式增量 |
+| `done` | 回答完成，携带 `sources` |
+| `error` | 输入错误或链路异常 |
 
-```
-src/main/java/com/agenticrag/
-├── agent/    # Agent 循环（M3：思考-行动-观察状态机）
-├── tool/     # 工具接口与注册表（M3 启用）
-├── rag/      # RAG：入库/索引/检索（M2）
-├── llm/      # 手写 OpenAI 兼容客户端 + SSE 流式解析
-├── memory/   # 会话记忆（内存版，最近 N 轮）
-├── api/      # RESTful + SSE 接口
-└── config/   # 配置化
-src/main/resources/static/index.html   # 聊天页面（随后端一起跑，零构建）
-```
+## 工程说明
+
+- 配置全部通过环境变量注入，仓库内不保存真实密钥
+- `ChatService` 作为统一链路入口，Web 与评测复用同一业务路径
+- `eval` profile 使用 H2 + 内置语料 + 词法 embedding stub，保证评测数据可复现
+- Dockerfile 采用多阶段构建，运行时镜像只包含 JRE 和应用 jar
 
 ## 里程碑
 
 - [x] M1 骨架：LLM 流式对话 + 聊天界面
-- [ ] M2 RAG：PDF 解析/分块/入库 + 向量+BM25 双通道检索 + RRF
-- [ ] M3 Agent：状态机 + 工具注册/校验/调用循环
-- [ ] M4 体验：SSE 流式 + 溯源 + 持久化记忆
-- [ ] M5 多 Agent：主从最简版
-- [ ] M6 收口：评测脚本 + Dockerfile + K8s + README
+- [x] M2 RAG：入库、混合检索、RRF
+- [x] M3 Agent：状态机 + 工具循环
+- [x] M4 体验：意图路由、来源展示、持久化记忆
+- [x] M5 多 Agent：Leader / SubAgent / Aggregator
+- [x] M6 工程化：评测、Docker、K8s、README
