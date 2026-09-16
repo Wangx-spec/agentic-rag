@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentic-rag-config
+data:
+  SERVER_PORT: "8081"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/agentic_rag"
+  SPRING_DATASOURCE_USERNAME: "postgres"
+  SPRING_DATASOURCE_DRIVER_CLASS_NAME: "org.postgresql.Driver"
+  SPRING_DATA_REDIS_HOST: "redis"
+  SPRING_DATA_REDIS_PORT: "6379"
+  RAG_MEMORY_TYPE: "redis"
+  RAG_VECTOR_TYPE: "qdrant"
+  RAG_VECTOR_QDRANT_HOST: "qdrant"
+  RAG_VECTOR_QDRANT_PORT: "6334"
+  LLM_BASE_URL: "https://api.siliconflow.cn/v1"
+  LLM_CHAT_MODEL: "zai-org/GLM-5.3"
+  LLM_EMBEDDING_MODEL: "Qwen/Qwen3-Embedding-8B"

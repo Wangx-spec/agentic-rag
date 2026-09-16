@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentic-rag
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentic-rag
+  template:
+    metadata:
+      labels:
+        app: agentic-rag
+    spec:
+      containers:
+        - name: app
+          image: agentic-rag:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: agentic-rag-config
+          env:
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: "postgres"
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: agentic-rag-secrets
+                  key: LLM_API_KEY
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1024Mi"

@@ -1,4 +1,38 @@
 services:
+  app:
+    build:
+      context: .
+    container_name: agentic-rag-app
+    ports:
+      - "8081:8081"
+    environment:
+      SERVER_PORT: 8081
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.siliconflow.cn/v1}
+      LLM_CHAT_MODEL: ${LLM_CHAT_MODEL:-zai-org/GLM-5.3}
+      LLM_EMBEDDING_MODEL: ${LLM_EMBEDDING_MODEL:-Qwen/Qwen3-Embedding-8B}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/agentic_rag
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      RAG_VECTOR_TYPE: qdrant
+      RAG_VECTOR_QDRANT_HOST: qdrant
+      RAG_VECTOR_QDRANT_PORT: 6334
+      RAG_MEMORY_TYPE: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
   postgres:
     image: postgres:16
     container_name: agentic-rag-postgres
@@ -26,7 +60,7 @@ services:
     volumes:
       - agentic_rag_qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "grep -q ':18BD' /proc/net/tcp || grep -q ':18BD' /proc/net/tcp6"]
       interval: 5s
       timeout: 3s
       retries: 20
