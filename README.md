@@ -84,6 +84,24 @@ export LLM_API_KEY=sk-xxx
 - 意图路由准确率
 - 每题明细
 
+## 外部基准（EnterpriseRAG-Bench）
+
+在 [EnterpriseRAG-Bench](https://github.com/onyx-dot-app/EnterpriseRAG-Bench)（Onyx，MIT）的
+Confluence 子集上做了真实栈评测：**5,186 篇语料全量入库（PG + Qdrant + SQLite FTS5），64 题**，
+走与线上一致的 `ChatService` 链路作答后由官方脚本判分。
+
+| 指标 | 基线（2026-09-16） | 说明 |
+|---|---:|---|
+| Document Recall | 48.4% | 检索：引用命中标准答案文档的比例 |
+| Completeness | 29.7% | 生成：答案覆盖官方事实点的比例 |
+| Correctness | 14.1% | 生成：LLM judge 整体判对比例 |
+| Invalid Extra Docs | 3.55 / 题 | 平均多余引用文档数 |
+
+> Judge 为 GLM-5.3（SiliconFlow，OpenAI 兼容适配），非官方默认 GPT 系，绝对分值与官方口径不完全可比。
+> 分题型拆解、失败模式分析与接入流程见 `docs/plan/M6-EnterpriseRAG-Bench接入Runbook.md`
+> 与 `docs/issues/2026-09-16-enterpriserag-bench首次评测报告与踩坑记录.md`。
+> 该基线为优化前版本，检索/生成双层优化与复测提升见后续 commit。
+
 ## API
 
 | 方法 | 路径 | 说明 |
