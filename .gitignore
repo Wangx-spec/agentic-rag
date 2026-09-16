@@ -10,3 +10,12 @@ target/
 .env.*
 !.env.example
 src/main/resources/application-local.yaml
+eval-report.md
+eval-answers/
+enterpriserag-report.md
+
+# 运行日志（评测/启动输出等临时产物）
+*.log
+
+# 运行时数据：语料、BM25 索引、用户上传文件统一不入库
+data/
