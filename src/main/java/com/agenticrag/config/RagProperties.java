@@ -29,12 +29,25 @@ public class RagProperties {
     private long maxFileSizeBytes = 50 * 1024 * 1024;
     private String allowedExtensions = ".pdf,.txt,.md";
     private int minChunkSize = 80;
+    private Retrieval retrieval = new Retrieval();
     private Vector vector = new Vector();
 
     @Data
     public static class Vector {
         private String type = "qdrant";
         private Qdrant qdrant = new Qdrant();
+    }
+
+    @Data
+    public static class Retrieval {
+        /** 检索通道模式：hybrid | bm25 | vector，通道消融评测用 */
+        private String mode = "hybrid";
+        /** Phase 3.1：LLM Query 改写开关（改写查询与原查询并行检索） */
+        private boolean rewriterEnabled = false;
+        /** Phase 3.1：触发改写的最小查询 token 数（短查询不值得改写） */
+        private int rewriterMinTokens = 15;
+        /** Phase 3.2：HyDE 假设性答案扩展开关（附加一路向量检索） */
+        private boolean hydeEnabled = false;
     }
 
     @Data

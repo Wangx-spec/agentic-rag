@@ -25,6 +25,11 @@ rag:
   top-k: 10
   final-top-n: 5
   rrf-k: 60
+  retrieval:
+    mode: ${RAG_RETRIEVAL_MODE:hybrid}   # hybrid | bm25 | vector，通道消融评测开关
+    rewriter-enabled: ${RAG_RETRIEVAL_REWRITER_ENABLED:false}       # Phase 3.1：LLM 查询改写（多查询并行检索）
+    rewriter-min-tokens: ${RAG_RETRIEVAL_REWRITER_MIN_TOKENS:15}    # 短查询不触发改写
+    hyde-enabled: ${RAG_RETRIEVAL_HYDE_ENABLED:false}               # Phase 3.2：HyDE 假设性答案检索
   embedding-dim: ${RAG_EMBEDDING_DIM:4096}
   data-dir: ${RAG_DATA_DIR:./data}
   min-chunk-size: 80
@@ -54,7 +59,7 @@ llm:
   api-key: ${LLM_API_KEY}
   chat-model: ${LLM_CHAT_MODEL:zai-org/GLM-5.3}
   embedding-model: ${LLM_EMBEDDING_MODEL:Qwen/Qwen3-Embedding-8B}
-  timeout-seconds: 60
+  timeout-seconds: ${LLM_TIMEOUT_SECONDS:60}
   max-agent-rounds: 5
   memory-rounds: 10
 

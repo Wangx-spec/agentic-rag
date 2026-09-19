@@ -261,7 +261,11 @@ public class ChatService {
             messages.add(new ChatMessage("system", "你是一个乐于助人的中文助手，回答简洁清晰。"));
         } else {
             StringBuilder context = new StringBuilder();
-            context.append("你是一个基于给定上下文回答问题的中文助手。请优先利用给定上下文回答，并在句末用 [n] 标注引用；如果上下文不足，请明确说明。\n\n");
+            context.append("你是一个基于给定上下文回答问题的中文助手。回答规则：\n"
+                    + "1. 优先利用给定上下文作答，句末以 [n] 标注引用来源；\n"
+                    + "2. 关键细节（编号、日期、数值、阈值、名称等）必须按原文精确复述，不得省略或改写；\n"
+                    + "3. 若问题包含多个子项，必须逐项回答，不可遗漏任何一项；\n"
+                    + "4. 若上下文信息不完整，基于现有上下文尽力作答，对推测部分以（不确定）标注，不要直接拒答。\n\n");
             for (RetrievedChunk chunk : retrieved) {
                 context.append("[").append(chunk.rank()).append("] ")
                         .append(chunk.docName()).append("：")
@@ -281,7 +285,11 @@ public class ChatService {
 
     private List<ChatMessage> buildAgentMessages(String sessionId) {
         List<ChatMessage> messages = new ArrayList<>();
-        messages.add(ChatMessage.system("你是一个乐于助人的中文助手。需要查询知识库或计算时，请先调用对应工具再作答；最终回答简洁清晰，并在句末用 [n] 标注引用来源。"));
+        messages.add(ChatMessage.system("你是一个乐于助人的中文助手。需要查询知识库或计算时，请先调用对应工具再作答。"
+                + "最终回答规则：简洁清晰，句末以 [n] 标注引用来源；"
+                + "关键细节（编号、日期、数值等）按原文精确复述；"
+                + "若问题含多个子项，逐项回答不可遗漏；"
+                + "信息不完整时基于现有内容尽力作答，对推测部分以（不确定）标注。"));
         messages.addAll(memory.load(sessionId, llmProperties.getMemoryRounds() * 2));
         return messages;
     }

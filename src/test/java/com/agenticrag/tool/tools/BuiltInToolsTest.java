@@ -6,11 +6,14 @@ import com.agenticrag.rag.index.EmbeddingClient;
 import com.agenticrag.rag.index.VectorSearchResult;
 import com.agenticrag.rag.index.VectorStore;
 import com.agenticrag.rag.retrieve.HybridRetriever;
+import com.agenticrag.rag.retrieve.HydeExpander;
+import com.agenticrag.rag.retrieve.QueryRewriter;
 import com.agenticrag.tool.ToolRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -40,7 +43,12 @@ class BuiltInToolsTest {
                 new VectorSearchResult(1L, 1L, 1, "THINKING→ACTING→OBSERVING→FINAL", "plan.pdf", -1.0)
         ));
 
-        HybridRetriever hybridRetriever = new HybridRetriever(embeddingClient, vectorStore, bm25Store, ragProperties);
+        QueryRewriter queryRewriter = mock(QueryRewriter.class);
+        HydeExpander hydeExpander = mock(HydeExpander.class);
+        when(queryRewriter.expand("M3 状态机")).thenReturn(List.of("M3 状态机"));
+        when(hydeExpander.hypothesize("M3 状态机")).thenReturn(Optional.empty());
+        HybridRetriever hybridRetriever = new HybridRetriever(embeddingClient, vectorStore, bm25Store, ragProperties,
+                queryRewriter, hydeExpander);
         ToolRegistry toolRegistry = new ToolRegistry();
         SearchKnowledgeBaseTool tool = new SearchKnowledgeBaseTool(hybridRetriever, toolRegistry);
         tool.register();

@@ -8,6 +8,7 @@ import com.agenticrag.rag.index.VectorStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -38,7 +39,12 @@ class HybridRetrieverTest {
                 new VectorSearchResult(3L, 101L, 1, "BM25 第二", "B.pdf", -1.0)
         ));
 
-        HybridRetriever retriever = new HybridRetriever(embeddingClient, vectorStore, bm25Store, ragProperties);
+        QueryRewriter queryRewriter = mock(QueryRewriter.class);
+        HydeExpander hydeExpander = mock(HydeExpander.class);
+        when(queryRewriter.expand("RAG 是什么")).thenReturn(List.of("RAG 是什么"));
+        when(hydeExpander.hypothesize("RAG 是什么")).thenReturn(Optional.empty());
+        HybridRetriever retriever = new HybridRetriever(embeddingClient, vectorStore, bm25Store, ragProperties,
+                queryRewriter, hydeExpander);
 
         List<RetrievedChunk> results = retriever.retrieve("RAG 是什么");
 
