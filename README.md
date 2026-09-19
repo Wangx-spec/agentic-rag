@@ -1,138 +1,147 @@
-# agentic-rag
+# Agentic RAG
 
-从零自研的 Java 17 Agentic RAG 项目：包含混合检索、Agent 工具循环、多 Agent 编排、会话记忆，以及 M6 引入的离线评测、容器化和 K8s 最小部署清单。
+Agentic RAG 平台：M6 性能优化与泛化性建设。
 
-## 架构图
+## 评测基线（EnterpriseRAG-Bench Confluence 64 题）
 
-```mermaid
-flowchart LR
-    UI[Web Frontend] --> API[ChatController]
-    API --> SVC[ChatService]
-    SVC --> AUTO[Auto Route]
-    SVC --> PLAIN[Plain]
-    SVC --> RAG[RAG]
-    SVC --> AGENT[Agent]
-    SVC --> MA[Multi-Agent]
-    AUTO --> Intent[IntentClassifier]
-    RAG --> Retriever[HybridRetriever]
-    AGENT --> Loop[AgentLoop]
-    MA --> Leader[LeaderAgent]
-    MA --> Worker[SubAgentExecutor]
-    MA --> Agg[Aggregator]
-    Retriever --> PG[(PostgreSQL)]
-    Retriever --> BM25[(SQLite FTS/BM25)]
-    Retriever --> Qdrant[(Qdrant)]
-    SVC --> Memory[(Memory/Redis)]
-    Loop --> Tools[Calculator / Search KB / MCP]
-    SVC --> LLM[OpenAI-Compatible LLM]
+**评测环境**：Judge=GLM-5.3, Embedding=Qwen3-8B, LLM=GLM-5.3, benchmark=EnterpriseRAG-Bench-confluence-64
+
+### Phase 1（BM25 修复前 — 纯向量成绩）
+
+> 修复前 `needsRebuild()` 每次启动清空 BM25 索引，RRF 静默退化为纯向量单通道。
+
+| 指标 | 原始成绩 | 说明 |
+|------|----------|------|
+| Recall | 48.37% | 纯向量，不含 BM25 贡献 |
+| Completeness | 29.73% | |
+| Correctness | 14.06% | constrained 0/11 |
+| BM25 非空率 | 0%（Bug） | 索引被误判重建 |
+
+### Phase 1（BM25 修复后 — 通道消融对比）
+
+> SCHEMA_VERSION 戳 + 表结构判据修复，BM25 真正参与 RRF。
+> 另修复语料转换 bug：43% 文档（2248/5187 篇）正文字段读取错误导致只剩标题桩，
+> 修复后 BM25 索引从 7.3 万行增至 13 万行。以下为完整语料上的官方数据。
+
+| 通道 | Recall | Completeness | Correctness | 备注 |
+|------|--------|-------------|-------------|------|
+| 纯向量 | 49.48% | 43.71% | 25.00% | 语义改述强，术语弱 |
+| 纯 BM25 | 57.08% | 32.68% | 20.31% | 术语/编号精确匹配强 |
+| RRF 融合（默认） | **61.71%** | 44.04% | 26.56% | 比最强单通道 +4.6pp |
+
+### Phase 2+3+4（检索扩展 + 生成优化叠加）
+
+> 查询构造优化（AND→OR 降级 + 停用词 + Porter）+
+> 检索扩展（Query 改写 + HyDE）+
+> 生成层 Prompt 去保守化（全部轮次同等生效）
+
+| 配置 | Recall | Completeness | Correctness | 答对题数 |
+|------|--------|-------------|-------------|---------|
+| hybrid 基线 | 61.71% | 44.04% | 26.56% | 17/64 |
+| + Query 改写 | 61.00% | 41.43% | 26.56% | 17/64 |
+| + HyDE | 65.89% | 49.91% | 34.38% | 22/64 |
+| 改写 + HyDE（全开） | **66.20%** | **50.53%** | **35.94%** | **23/64** |
+
+**HyDE 是最大单项增益**（+4.2pp recall / +7.8pp correctness）；Query 改写单独无增益，但与 HyDE 叠加仍有小幅提升。semantic 题型 recall 40%→53%、correctness 20%→40%。
+
+**对比初始基线**（BM25 修复前 + 残缺语料）：Recall 48.37% → 66.20%（+17.8pp），Correctness 14.06% → 35.94%（+21.9pp），答对 9/64 → 23/64。
+
+### Phase 5（泛化性评估）
+
+| 变体类型 | Recall | Recall Drop | 验收门槛 |
+|----------|--------|-------------|----------|
+| 原始（全开配置） | 66.20% | — | — |
+| 去术语化 | TBD | TBD% | < 15% |
+| 短查询 | TBD | TBD% | < 10% |
+| 中译 | TBD | TBD% | 参考 |
+| 通道独立贡献率 | TBD% | — | > 10% |
+
+### 已知短板（诚实披露）
+
+- completeness 题型答对率 0-1/11：答案子项覆盖不全（检索已到位，生成层拼全能力不足）
+- constrained correctness 18-27% 波动：细节复述（ticket 号/日期）仍常遗漏
+- RRF 融合仅比最强单通道高 4.6pp：两通道互补性未吃满，加权融合/按题型路由是下一步
+
+## 项目结构
+
+```
+src/main/java/com/agenticrag/
+├── agent/        Agent 循环（M3）
+├── api/          REST 接口
+├── config/       配置属性
+├── eval/         评测框架
+├── intent/       意图分类
+├── llm/          LLM 客户端（OpenAI 兼容）
+├── memory/       会话记忆
+├── multiagent/   多 Agent 编排
+├── rag/
+│   ├── dto/      数据对象
+│   ├── index/    BM25 + 向量索引（含 TextAnalyzer/PorterStemmer）
+│   ├── ingest/   文档入库
+│   ├── retrieve/ 混合检索（含 QueryRewriter/HydeExpander）
+│   └── storage/  文件存储
+├── service/      聊天服务（含 Phase 4 Prompt）
+└── tool/         工具系统
 ```
 
-## 快速开始
-
-### 1. 本地启动
+## 四路消融评测操作
 
 ```bash
-export LLM_API_KEY=sk-xxx
-export LLM_BASE_URL=https://api.siliconflow.cn/v1
-export LLM_CHAT_MODEL=zai-org/GLM-5.3
-export LLM_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-8B
+# Phase 3 消融：原始 → +改写 → +HyDE → +改写+HyDE
 
-docker compose up -d postgres qdrant redis
+# 原始（全关）
+mvn test -Dtest=EnterpriseRagRunnerTest \
+  -Dspring.profiles.active=eval \
+  -DRAG_RETRIEVAL_MODE=hybrid
+
+# +改写
+RAG_RETRIEVAL_REWRITER_ENABLED=true mvn test -Dtest=... ...
+
+# +HyDE
+RAG_RETRIEVAL_HYDE_ENABLED=true mvn test -Dtest=... ...
+
+# +改写+HyDE
+RAG_RETRIEVAL_REWRITER_ENABLED=true RAG_RETRIEVAL_HYDE_ENABLED=true mvn test -Dtest=... ...
+```
+
+## Phase 5 泛化性评估操作
+
+```bash
+# 1. 生成变体（三类各 64 题）
+python3 scripts/generate_query_variants.py \
+  --input ./data/benchmark/questions.jsonl \
+  --out ./data/derived \
+  --base-url https://api.siliconflow.cn/v1 \
+  --api-key $LLM_API_KEY \
+  --model Qwen/Qwen2.5-7B-Instruct
+
+# 2. 用变体跑评测（替换 questions.jsonl 路径）
+# 3. 对比原始 recall 计算 Recall Drop
+```
+
+## 环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `LLM_API_KEY` | — | **必需**，LLM API Key |
+| `RAG_RETRIEVAL_MODE` | `hybrid` | 检索模式：hybrid/bm25/vector |
+| `RAG_RETRIEVAL_REWRITER_ENABLED` | `false` | Phase 3.1 查询改写开关 |
+| `RAG_RETRIEVAL_REWRITER_MIN_TOKENS` | `15` | 触发改写的最小 token 数 |
+| `RAG_RETRIEVAL_HYDE_ENABLED` | `false` | Phase 3.2 HyDE 开关 |
+| `RAG_DATA_DIR` | `./data` | SQLite 本地数据目录 |
+
+## 开发
+
+```bash
+# 编译
+./mvnw compile
+
+# 全量测试
+./mvnw test
+
+# 仅跑新增 M6 测试
+./mvnw test -Dtest="TextAnalyzerTest,QueryRewriterTest,HydeExpanderTest,Bm25StoreRebuildTest"
+
+# 启动
 ./mvnw spring-boot:run
 ```
-
-页面地址：`http://localhost:8081`
-
-### 2. 一条命令拉起容器环境
-
-```bash
-export LLM_API_KEY=sk-xxx
-docker compose up -d --build
-```
-
-健康检查：
-
-```bash
-curl http://localhost:8081/api/health
-```
-
-### 3. K8s 最小部署
-
-```bash
-kubectl apply -f deploy/k8s/configmap.yaml
-kubectl apply -f deploy/k8s/deployment.yaml
-kubectl apply -f deploy/k8s/service.yaml
-```
-
-`deployment.yaml` 里预留了 `agentic-rag-secrets/LLM_API_KEY` 的 Secret 引用。
-
-## 评测
-
-M6 提供了 `eval` profile，会使用内置语料自动入库并跑离线评测。
-
-```bash
-export LLM_API_KEY=sk-xxx
-./mvnw spring-boot:run -Dspring-boot.run.profiles=eval
-```
-
-运行结果会输出到项目根目录的 `eval-report.md`，包含：
-
-- 回答准确率（关键词 F1）
-- Recall@10
-- 引用有效率
-- 工具调用成功率
-- 意图路由准确率
-- 每题明细
-
-## 外部基准（EnterpriseRAG-Bench）
-
-在 [EnterpriseRAG-Bench](https://github.com/onyx-dot-app/EnterpriseRAG-Bench)（Onyx，MIT）的
-Confluence 子集上做了真实栈评测：**5,186 篇语料全量入库（PG + Qdrant + SQLite FTS5），64 题**，
-走与线上一致的 `ChatService` 链路作答后由官方脚本判分。
-
-| 指标 | 基线（2026-09-16） | 说明 |
-|---|---:|---|
-| Document Recall | 48.4% | 检索：引用命中标准答案文档的比例 |
-| Completeness | 29.7% | 生成：答案覆盖官方事实点的比例 |
-| Correctness | 14.1% | 生成：LLM judge 整体判对比例 |
-| Invalid Extra Docs | 3.55 / 题 | 平均多余引用文档数 |
-
-> Judge 为 GLM-5.3（SiliconFlow，OpenAI 兼容适配），非官方默认 GPT 系，绝对分值与官方口径不完全可比。
-> 分题型拆解、失败模式分析与接入流程见 `docs/plan/M6-EnterpriseRAG-Bench接入Runbook.md`
-> 与 `docs/issues/2026-09-16-enterpriserag-bench首次评测报告与踩坑记录.md`。
-> 该基线为优化前版本，检索/生成双层优化与复测提升见后续 commit。
-
-## API
-
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/chat` | SSE 聊天入口，body: `{"sessionId":"s1","message":"...","mode":"auto|plain|rag|agent|multi-agent"}` |
-| DELETE | `/api/memory/{sessionId}` | 清空会话记忆 |
-| GET | `/api/health` | 健康检查 |
-| POST | `/api/ingest` | 文档入库 |
-| GET | `/api/documents` | 查看文档列表 |
-
-SSE 事件：
-
-| event | 含义 |
-|---|---|
-| `thinking` | 思考过程 / 路由 / 工具 / 多 Agent 阶段事件 |
-| `delta` | 回答流式增量 |
-| `done` | 回答完成，携带 `sources` |
-| `error` | 输入错误或链路异常 |
-
-## 工程说明
-
-- 配置全部通过环境变量注入，仓库内不保存真实密钥
-- `ChatService` 作为统一链路入口，Web 与评测复用同一业务路径
-- `eval` profile 使用 H2 + 内置语料 + 词法 embedding stub，保证评测数据可复现
-- Dockerfile 采用多阶段构建，运行时镜像只包含 JRE 和应用 jar
-
-## 里程碑
-
-- [x] M1 骨架：LLM 流式对话 + 聊天界面
-- [x] M2 RAG：入库、混合检索、RRF
-- [x] M3 Agent：状态机 + 工具循环
-- [x] M4 体验：意图路由、来源展示、持久化记忆
-- [x] M5 多 Agent：Leader / SubAgent / Aggregator
-- [x] M6 工程化：评测、Docker、K8s、README
