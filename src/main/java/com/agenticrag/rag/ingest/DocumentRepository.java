@@ -177,5 +177,10 @@ public class DocumentRepository {
         jdbcTemplate.update("DELETE FROM documents WHERE id = ?", documentId);
     }
 
-
+    /** 统计已完成入库的文档数（chunk_count > 0），供 BM25 启动健康断言跨库比对 */
+    public long countIngested() {
+        String sql = "SELECT count(*) FROM documents WHERE chunk_count > 0";
+        Long count = jdbcTemplate.queryForObject(sql, Long.class);
+        return count == null ? 0L : count;
+    }
 }
