@@ -36,6 +36,24 @@ def is_heading_like(line: str, next_line: str) -> bool:
     return next_line.strip() == ""
 
 
+def extract_content(doc: dict) -> str:
+    """按 content_field_names 声明拼接正文字段。
+
+    bench 的 confluence 文档正文字段名不统一（eng-sre 等空间用 content，
+    oncall-and-incident-response 等空间用 body），JSON 通过 content_field_names
+    显式声明正文位置。早期版本硬编码 doc["content"]，导致所有 body 型文档
+    转换后只剩标题+元数据头（约 2248 篇标题桩，占语料 43%）。
+    """
+    fields = doc.get("content_field_names") or []
+    parts = [str(doc[f]).strip() for f in fields if doc.get(f)]
+    if not parts:
+        # 兜底：无声明时依次尝试 content / body
+        fallback = doc.get("content") or doc.get("body") or ""
+        if fallback:
+            parts = [str(fallback).strip()]
+    return "\n\n".join(p for p in parts if p)
+
+
 def to_markdown(doc: dict) -> str:
     parts = [f"# {doc.get('title', 'Untitled')}"]
     meta_bits = []
@@ -49,7 +67,7 @@ def to_markdown(doc: dict) -> str:
     if doc.get("summary"):
         parts.append("")
         parts.append(f"**Summary:** {doc['summary']}")
-    content = doc.get("content", "")
+    content = extract_content(doc)
     if content:
         parts.append("")
         lines = content.splitlines()
@@ -67,6 +85,7 @@ def main() -> int:
     ap.add_argument("--bench", required=True, help="EnterpriseRAG-Bench-main 根目录")
     ap.add_argument("--source", default="confluence", help="源类型（默认 confluence）")
     ap.add_argument("--out", default="./data/enterpraserag-md", help="输出目录")
+    ap.add_argument("--force", action="store_true", help="force overwrite existing md files")
     args = ap.parse_args()
 
     bench_root = Path(args.bench)
@@ -94,7 +113,7 @@ def main() -> int:
         if not dsid:
             skip_no_dsid += 1
             continue
-        if (out_dir / f"{dsid}.md").exists():
+        if (out_dir / f"{dsid}.md").exists() and not args.force:
             skip_existing += 1
             continue
         try:
