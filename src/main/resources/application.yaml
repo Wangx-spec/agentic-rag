@@ -79,6 +79,7 @@ eval:
     corpus-dir: ${EVAL_ERAG_CORPUS:./data/enterpriserag-md}
     answers-path: ${EVAL_ERAG_ANSWERS:./eval-answers/answers.jsonl}
     report-path: ${EVAL_ERAG_REPORT:./enterpriserag-report.md}
+    chat-mode: ${EVAL_ERAG_CHAT_MODE:rag}
 
 logging:
   level:

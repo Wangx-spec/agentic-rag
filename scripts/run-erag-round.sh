@@ -74,6 +74,8 @@ export RAG_RETRIEVAL_MODE="$MODE"
 export RAG_RETRIEVAL_REWRITER_ENABLED="$REWRITER"
 export RAG_RETRIEVAL_HYDE_ENABLED="$HYDE"
 export LLM_TIMEOUT_SECONDS="${LLM_TIMEOUT_SECONDS:-120}"
+# 作答模式：rag（默认）| agent（ReAct 工具循环，r07）| multi-agent | auto
+export EVAL_ERAG_CHAT_MODE="${EVAL_ERAG_CHAT_MODE:-rag}"
 
 ROUNDS_DIR="${ROUNDS_DIR:-eval-answers/rounds}"
 

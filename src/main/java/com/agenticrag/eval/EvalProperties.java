@@ -29,5 +29,11 @@ public class EvalProperties {
 
         /** 内部指标报告输出路径 */
         private String reportPath = "./enterpriserag-report.md";
+
+        /**
+         * 作答模式：rag（默认，单次检索生成）| agent（ReAct 工具循环）| multi-agent | auto。
+         * 见 {@link com.agenticrag.service.ChatMode}
+         */
+        private String chatMode = "rag";
     }
 }

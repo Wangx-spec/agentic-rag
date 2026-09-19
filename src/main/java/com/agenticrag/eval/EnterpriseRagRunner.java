@@ -161,7 +161,8 @@ public class EnterpriseRagRunner implements CommandLineRunner {
     /** ② 单题作答并立即追加写 answers.jsonl（官方判分格式：question_id / answer / document_ids）。 */
     private void answerOne(Path answersPath, EnterpriseRagCase q) throws Exception {
         chatService.clearMemory(q.questionId());
-        ChatResult result = chatService.chat(q.questionId(), q.question(), ChatMode.RAG, new ChatEventSink() {});
+        ChatMode mode = ChatMode.from(evalProperties.getEnterpriseRag().getChatMode());
+        ChatResult result = chatService.chat(q.questionId(), q.question(), mode, new ChatEventSink() {});
         List<String> documentIds = extractDocumentIds(result);
 
         Map<String, Object> row = new LinkedHashMap<>();

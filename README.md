@@ -46,6 +46,17 @@ Agentic RAG 平台：M6 性能优化与泛化性建设。
 
 **对比初始基线**（BM25 修复前 + 残缺语料）：Recall 48.37% → 66.20%（+17.8pp），Correctness 14.06% → 35.94%（+21.9pp），答对 9/64 → 23/64。
 
+### AGENT 模式消融（r07）
+
+| 配置 | Recall | Invalid Extra | 备注 |
+|------|--------|---------------|------|
+| RAG 模式（全开） | 66.20% | 3.09 | 引用恒 5 文档（finalTopN 上限） |
+| AGENT 模式（ReAct 循环） | **75.22%** | 10.27 | 多轮检索打破 5 文档天花板，constrained recall 95.5% |
+
+> r07 暴露一个真实工程 bug：AgentLoop 终答轮撤掉工具后，模型以纯文本模仿 `<tool_call>` 格式输出，
+> 41/64 题终答被污染——correctness/completeness 数字不可用于结论（详见 docs/issues 归因分析）。
+> 修复方向（agentic 检索 + reranker 精排 + RAG 合成终答）即榜首系统的架构形态。
+
 ### Phase 5（泛化性评估）
 
 | 变体类型 | Recall | Recall Drop | 验收门槛 |
