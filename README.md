@@ -53,9 +53,28 @@ Agentic RAG 平台：M6 性能优化与泛化性建设。
 | RAG 模式（全开） | 66.20% | 3.09 | 引用恒 5 文档（finalTopN 上限） |
 | AGENT 模式（ReAct 循环） | **75.22%** | 10.27 | 多轮检索打破 5 文档天花板，constrained recall 95.5% |
 
-> r07 暴露一个真实工程 bug：AgentLoop 终答轮撤掉工具后，模型以纯文本模仿 `<tool_call>` 格式输出，
+> r07 暴露一个真实工程 bug：AgentLoop 终答轮撤掉工具后，模型以纯文本模仿 `<tool_call` 格式输出，
 > 41/64 题终答被污染——correctness/completeness 数字不可用于结论（详见 docs/issues 归因分析）。
 > 修复方向（agentic 检索 + reranker 精排 + RAG 合成终答）即榜首系统的架构形态。
+
+### Phase 7（Rerank 精排 + Agent 终答修复）
+
+> 接入硅基流动 `BAAI/bge-reranker-v2-m3` rerank 模型，HybridRetriever 在 RRF 融合后 top 20 → rerank → top 5（fail-open 降级）；
+> AgentLoop 检测终答 `<tool_call` 泄漏 → 用累积 sources + rerank 剪枝 → RAG 合成干净答案。
+> r08/r07b 已完成实测（各 64 题、判分零网络污染），数字如下。
+
+| 轮次 | 配置 | Recall | Completeness | Correctness | Invalid | 答对 | 泄漏题数 |
+|------|------|--------|-------------|-------------|---------|------|---------|
+| r06 | RAG + 改写 + HyDE | 66.20% | 50.53% | 35.94% | 3.09 | 23/64 | 0/64 |
+| r08 | r06 + **rerank** | 66.85% | 52.98% | 34.38% | 3.02 | 22/64 | 0/64 |
+| r07 | AGENT + 改写 + HyDE | 75.22% | 35.28% | 32.81† | 10.27 | 21/64 | 41/64 |
+| **r07b** | r07 + rerank + **修复泄漏** | **77.38%** | 47.91% | **40.62%** | 9.34 | **26/64** | **0/64** |
+
+注：†表示 r07 的 32.81% 因 41 题泄漏作废，r07b 为有效基线。
+
+**r07b 是历史最佳**：答对 26/64、correctness 首破 40%、recall 77.38%（注意：官方排行榜为 500 题全集口径，与本 64 题子集不直接可比）。终答泄漏 41/64 → 0/64，修复完全生效（32 题触发泄漏检测并走 RAG 合成降级）。
+
+**r08 的关键认知（rerank 在 RAG 模式为何近乎无效）**：invalid extra 统计的是"引用的 5 个文档里几个非 gold"——rerank 只在 top-20 内部重排、引用数不变；且 benchmark 陷阱文档是语义极近的近重复冲突版，cross-encoder 同样给高分。rerank 的真正价值在 agent 模式剪枝（r07 累积 2-19 引用），不在 RAG 模式增益。
 
 ### Phase 5（泛化性评估）
 
@@ -69,9 +88,10 @@ Agentic RAG 平台：M6 性能优化与泛化性建设。
 
 ### 已知短板（诚实披露）
 
-- completeness 题型答对率 0-1/11：答案子项覆盖不全（检索已到位，生成层拼全能力不足）
-- constrained correctness 18-27% 波动：细节复述（ticket 号/日期）仍常遗漏
-- RRF 融合仅比最强单通道高 4.6pp：两通道互补性未吃满，加权融合/按题型路由是下一步
+- completeness 题型答对率仍低（r07b 1/11）：答案子项覆盖不全（检索已到位，生成层拼全能力不足）
+- constrained correctness 27%（r07b）：细节复述（ticket 号/日期）仍常遗漏，尽管 recall 已达 95.5%
+- agent 模式 invalid extra 9.34：引用集=多轮检索累积全集（2-20 个文档），剪枝只作用于合成 prompt、未作用于引用列表；且 benchmark 陷阱文档为语义极近的冲突版，rerank 无法区分——降该指标需"引用裁剪 + 分数阈值过滤"而非重排
+- rerank 在 RAG 模式无增益（r08 实测 corr -1.6pp）：top-20→top-5 重排不改变引用基数，已保留（免费）但价值定位在 agent 剪枝
 
 ## 项目结构
 
@@ -139,6 +159,10 @@ python3 scripts/generate_query_variants.py \
 | `RAG_RETRIEVAL_REWRITER_ENABLED` | `false` | Phase 3.1 查询改写开关 |
 | `RAG_RETRIEVAL_REWRITER_MIN_TOKENS` | `15` | 触发改写的最小 token 数 |
 | `RAG_RETRIEVAL_HYDE_ENABLED` | `false` | Phase 3.2 HyDE 开关 |
+| `RAG_RETRIEVAL_RERANK_ENABLED` | `false` | Phase 7 Rerank 精排开关 |
+| `RAG_RETRIEVAL_RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | Rerank 模型名（硅基流动） |
+| `RAG_RETRIEVAL_RERANK_CANDIDATE_SIZE` | `20` | 送入 rerank 的候选数 |
+| `RAG_RETRIEVAL_RERANK_FINAL_TOP_N` | _空_ | 精排后保留数，空则回退 `final-top-n` |
 | `RAG_DATA_DIR` | `./data` | SQLite 本地数据目录 |
 
 ## 开发
@@ -152,6 +176,9 @@ python3 scripts/generate_query_variants.py \
 
 # 仅跑新增 M6 测试
 ./mvnw test -Dtest="TextAnalyzerTest,QueryRewriterTest,HydeExpanderTest,Bm25StoreRebuildTest"
+
+# Phase 7 Rerank + Agent 终答修复测试
+./mvnw test -Dtest="RerankClientTest,HybridRetrieverTest,AgentLoopTest"
 
 # 启动
 ./mvnw spring-boot:run
