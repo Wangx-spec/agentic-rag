@@ -267,8 +267,23 @@ public class EnterpriseRagRunner implements CommandLineRunner {
     }
 
     private List<EnterpriseRagCase> readQuestions() throws Exception {
-        ClassPathResource resource = new ClassPathResource(QUESTIONS_RESOURCE);
+        String questionsPath = evalProperties.getEnterpriseRag().getQuestionsPath();
         List<EnterpriseRagCase> cases = new ArrayList<>();
+        // Phase 5 扰动集：设置 questions-path 时从文件系统读变体题目，否则回退 classpath 内置资源
+        if (questionsPath != null && !questionsPath.isBlank()) {
+            log.info("从外部文件加载题目：{}", questionsPath);
+            try (BufferedReader reader = Files.newBufferedReader(Path.of(questionsPath), StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.isBlank()) {
+                        continue;
+                    }
+                    cases.add(objectMapper.readValue(line, EnterpriseRagCase.class));
+                }
+            }
+            return cases;
+        }
+        ClassPathResource resource = new ClassPathResource(QUESTIONS_RESOURCE);
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8))) {
             String line;

@@ -87,6 +87,7 @@ eval:
     answers-path: ${EVAL_ERAG_ANSWERS:./eval-answers/answers.jsonl}
     report-path: ${EVAL_ERAG_REPORT:./enterpriserag-report.md}
     chat-mode: ${EVAL_ERAG_CHAT_MODE:rag}
+    questions-path: ${EVAL_ERAG_QUESTIONS:}   # Phase 5 扰动集：外部题目 jsonl 路径，空=classpath 内置 64 题
 
 logging:
   level:

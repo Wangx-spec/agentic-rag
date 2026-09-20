@@ -35,5 +35,11 @@ public class EvalProperties {
          * 见 {@link com.agenticrag.service.ChatMode}
          */
         private String chatMode = "rag";
+
+        /**
+         * 题目文件路径（Phase 5 扰动集用）：设置后从文件系统读该 jsonl，
+         * 为空时回退 classpath 内置资源 eval/datasets/enterprise-rag-64.jsonl
+         */
+        private String questionsPath = "";
     }
 }
