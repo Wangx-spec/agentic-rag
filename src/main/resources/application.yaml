@@ -36,7 +36,7 @@ rag:
       candidate-size: ${RAG_RETRIEVAL_RERANK_CANDIDATE_SIZE:20}     # RRF 后送 rerank 的候选数
       final-top-n: ${RAG_RETRIEVAL_RERANK_FINAL_TOP_N:}             # 精排后保留数（空=回退 final-top-n）
   agent:
-    citation-top-n: ${RAG_AGENT_CITATION_TOP_N:8}   # Phase 7：终答引用裁剪上限（累积 sources 超额时按 rerank 精排裁剪）
+    citation-top-n: ${RAG_AGENT_CITATION_TOP_N:5}   # Phase 7：终答引用裁剪上限。r07c/r07d 消融：top5 时 corr 43.75% 最优（更少引用=更少上下文噪声）
   embedding-dim: ${RAG_EMBEDDING_DIM:4096}
   data-dir: ${RAG_DATA_DIR:./data}
   min-chunk-size: 80

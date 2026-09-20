@@ -48,7 +48,7 @@ class BuiltInToolsTest {
         when(queryRewriter.expand("M3 状态机")).thenReturn(List.of("M3 状态机"));
         when(hydeExpander.hypothesize("M3 状态机")).thenReturn(Optional.empty());
         HybridRetriever hybridRetriever = new HybridRetriever(embeddingClient, vectorStore, bm25Store, ragProperties,
-                queryRewriter, hydeExpander);
+                queryRewriter, hydeExpander, null);
         ToolRegistry toolRegistry = new ToolRegistry();
         SearchKnowledgeBaseTool tool = new SearchKnowledgeBaseTool(hybridRetriever, toolRegistry);
         tool.register();

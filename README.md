@@ -68,17 +68,17 @@ Agentic RAG 平台：M6 性能优化与泛化性建设。
 | r06 | RAG + 改写 + HyDE | 66.20% | 50.53% | 35.94% | 3.09 | 23/64 | 0/64 |
 | r08 | r06 + **rerank** | 66.85% | 52.98% | 34.38% | 3.02 | 22/64 | 0/64 |
 | r07 | AGENT + 改写 + HyDE | 75.22% | 35.28% | 32.81† | 10.27 | 21/64 | 41/64 |
-| **r07b** | r07 + rerank + **修复泄漏** | **77.38%** | 47.91% | **40.62%** | 9.34 | **26/64** | **0/64** |
+| r07b | r07 + rerank + **修复泄漏** | **77.38%** | 47.91% | 40.62% | 9.34 | 26/64 | **0/64** |
 | r07c | r07b + **引用裁剪**(top8) | 76.39% | 51.83% | 39.06% | 5.44 | 25/64 | 0/64 |
-| r07d | r07c 裁剪调至 top5 | TBD | TBD | TBD | TBD | TBD | TBD |
+| **r07d** | r07c 裁剪调至 **top5** | 68.28% | **53.29%** | **43.75%** | **3.27** | **28/64** | 0/64 |
 
-注：†表示 r07 的 32.81% 因 41 题泄漏作废，r07b 为有效基线。
+注：†表示 r07 的 32.81% 因 41 题泄漏作废，r07b 起为有效数字。
 
-**r07b 是 correctness 峰值**：答对 26/64、correctness 首破 40%、recall 77.38%（注意：官方排行榜为 500 题全集口径，与本 64 题子集不直接可比）。终答泄漏 41/64 → 0/64，修复完全生效（32 题触发泄漏检测并走 RAG 合成降级）。
+**r07d 是最终最佳配置**：答对 28/64、correctness 43.75%、completeness 53.29% 三项历史最高，invalid extra 3.27 接近 RAG 模式水平（3.09）。终答泄漏 41/64 → 0/64（32 题触发检测走 RAG 合成降级）。
 
-**r07c 引用裁剪**：终答 `document_ids` 从"多轮检索累积全集"改为"终答实际依据的剪枝集"（超 citationTopN 按 rerank 精排裁剪）。invalid extra 9.34→5.44（-42%），代价 recall -1.0pp、comp 反升 3.9pp。分桶数据揭示本质：invalid extra ≈ 引用数 - gold 数（引用 8 个的 39 题平均 extra 6.56），该指标由引用数直接决定，`RAG_AGENT_CITATION_TOP_N` 是可调旋钮。
+**三轮裁剪消融揭示的核心规律——更少引用 = 更高 correctness**：top20（不裁剪）corr 40.62 → top8 corr 39.06 → **top5 corr 43.75**。裁剪不仅改善引用精度指标，还通过减少上下文噪声直接提升生成质量（semantic 题型 corr 60%）。代价是 recall 77.38→68.28（top5 上限压制多 gold 文档题，completeness 题型 recall 38.2%）。`RAG_AGENT_CITATION_TOP_N`（默认已固化 5）提供 recall/corr 调节旋钮。
 
-**r08 的关键认知（rerank 在 RAG 模式为何近乎无效）**：invalid extra 统计的是"引用的 5 个文档里几个非 gold"——rerank 只在 top-20 内部重排、引用数不变；且 benchmark 陷阱文档是语义极近的近重复冲突版，cross-encoder 同样给高分。rerank 的真正价值在 agent 模式剪枝（r07 累积 2-19 引用），不在 RAG 模式增益。
+**r08 的关键认知（rerank 在 RAG 模式为何近乎无效）**：invalid extra 统计的是"引用的文档里几个非 gold"——rerank 只在 top-20 内部重排、引用数不变；且 benchmark 陷阱文档是语义极近的近重复冲突版，cross-encoder 同样给高分。rerank 的真正价值在 agent 模式剪枝（r07 累积 2-20 引用），不在 RAG 模式增益。
 
 ### Phase 5（泛化性评估）
 
@@ -94,7 +94,7 @@ Agentic RAG 平台：M6 性能优化与泛化性建设。
 
 - completeness 题型答对率仍低（r07b 1/11）：答案子项覆盖不全（检索已到位，生成层拼全能力不足）
 - constrained correctness 27%（r07b）：细节复述（ticket 号/日期）仍常遗漏，尽管 recall 已达 95.5%
-- agent 模式 invalid extra 5.44（r07c）：引用裁剪后仍高于 RAG 模式（3.09），本质是多轮检索的结构性代价——extra ≈ 引用数 - gold 数，`RAG_AGENT_CITATION_TOP_N`（默认 8）提供精度/召回调节旋钮；且 benchmark 陷阱文档为语义极近的冲突版，rerank 无法区分
+- agent 模式 invalid extra 3.27（r07d，接近 RAG 模式 3.09）：本质是多轮检索的结构性代价——extra ≈ 引用数 - gold 数；`RAG_AGENT_CITATION_TOP_N`（默认 5）提供 recall/corr 调节旋钮；benchmark 陷阱文档为语义极近的冲突版，rerank 无法区分
 - rerank 在 RAG 模式无增益（r08 实测 corr -1.6pp）：top-20→top-5 重排不改变引用基数，已保留（免费）但价值定位在 agent 剪枝
 
 ## 项目结构

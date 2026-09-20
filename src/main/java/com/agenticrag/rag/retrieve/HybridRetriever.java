@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 混合检索器：向量 + BM25 双通道 → RRF 融合 → top N
@@ -35,19 +36,22 @@ public class HybridRetriever {
     private final RagProperties ragProperties;
     private final QueryRewriter queryRewriter;
     private final HydeExpander hydeExpander;
+    private final RerankClient rerankClient;
 
     public HybridRetriever(EmbeddingClient embeddingClient,
                            VectorStore vectorStore,
                            Bm25Store bm25Store,
                            RagProperties ragProperties,
                            QueryRewriter queryRewriter,
-                           HydeExpander hydeExpander) {
+                           HydeExpander hydeExpander,
+                           @org.springframework.beans.factory.annotation.Autowired(required = false) RerankClient rerankClient) {
         this.embeddingClient = embeddingClient;
         this.vectorStore = vectorStore;
         this.bm25Store = bm25Store;
         this.ragProperties = ragProperties;
         this.queryRewriter = queryRewriter;
         this.hydeExpander = hydeExpander;
+        this.rerankClient = rerankClient;
     }
 
     /**
@@ -73,14 +77,31 @@ public class HybridRetriever {
                     searchAndMerge(passage, true, false, merged));
         }
 
-        List<MergeBucket> ranked = merged.values().stream()
+        // Rerank 精排分支：RRF 排序后取 candidateSize 候选 → rerank → top finalTopN
+        boolean rerankEnabled = isRerankEnabled();
+        int effectiveFinalTopN = ragProperties.getFinalTopN();
+        if (rerankEnabled && ragProperties.getRetrieval().getRerank().getFinalTopN() != null) {
+            effectiveFinalTopN = ragProperties.getRetrieval().getRerank().getFinalTopN();
+        }
+        int candidateSize = rerankEnabled
+                ? ragProperties.getRetrieval().getRerank().getCandidateSize()
+                : effectiveFinalTopN;
+
+        List<MergeBucket> candidates = merged.values().stream()
                 .sorted(Comparator.comparingDouble(MergeBucket::rrfScore).reversed())
-                .limit(ragProperties.getFinalTopN())
+                .limit(candidateSize)
                 .toList();
 
-        List<RetrievedChunk> output = new ArrayList<>(ranked.size());
-        for (int i = 0; i < ranked.size(); i++) {
-            MergeBucket bucket = ranked.get(i);
+        if (rerankEnabled && !candidates.isEmpty()) {
+            candidates = applyRerank(query, candidates, effectiveFinalTopN,
+                    ragProperties.getRetrieval().getRerank().getModel());
+        } else {
+            candidates = candidates.subList(0, Math.min(effectiveFinalTopN, candidates.size()));
+        }
+
+        List<RetrievedChunk> output = new ArrayList<>(candidates.size());
+        for (int i = 0; i < candidates.size(); i++) {
+            MergeBucket bucket = candidates.get(i);
             output.add(new RetrievedChunk(
                     bucket.chunkId(),
                     bucket.documentId(),
@@ -92,6 +113,34 @@ public class HybridRetriever {
             ));
         }
         return output;
+    }
+
+    private boolean isRerankEnabled() {
+        return ragProperties.getRetrieval() != null
+                && ragProperties.getRetrieval().getRerank() != null
+                && ragProperties.getRetrieval().getRerank().isEnabled()
+                && rerankClient != null;
+    }
+
+    private List<MergeBucket> applyRerank(String query, List<MergeBucket> candidates,
+                                          int topN, String model) {
+        List<String> docs = candidates.stream().map(MergeBucket::content).toList();
+        Optional<List<RerankResult>> rerankOpt = rerankClient.rerank(query, docs, topN, model);
+
+        if (rerankOpt.isPresent()) {
+            List<RerankResult> results = rerankOpt.get();
+            List<MergeBucket> reranked = new ArrayList<>(results.size());
+            for (RerankResult r : results) {
+                if (r.index() >= 0 && r.index() < candidates.size()) {
+                    reranked.add(candidates.get(r.index()));
+                }
+            }
+            log.info("Rerank 完成：{} 候选 → top {}", candidates.size(), reranked.size());
+            return reranked;
+        } else {
+            log.warn("Rerank 调用失败，回退 RRF 序");
+            return candidates.subList(0, Math.min(topN, candidates.size()));
+        }
     }
 
 

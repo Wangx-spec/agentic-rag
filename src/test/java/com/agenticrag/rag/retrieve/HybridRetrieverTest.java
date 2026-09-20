@@ -12,6 +12,9 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -44,11 +47,99 @@ class HybridRetrieverTest {
         when(queryRewriter.expand("RAG 是什么")).thenReturn(List.of("RAG 是什么"));
         when(hydeExpander.hypothesize("RAG 是什么")).thenReturn(Optional.empty());
         HybridRetriever retriever = new HybridRetriever(embeddingClient, vectorStore, bm25Store, ragProperties,
-                queryRewriter, hydeExpander);
+                queryRewriter, hydeExpander, null);
 
         List<RetrievedChunk> results = retriever.retrieve("RAG 是什么");
 
         assertEquals(List.of(2L, 1L, 3L), results.stream().map(RetrievedChunk::chunkId).toList());
         assertEquals(List.of(1, 2, 3), results.stream().map(RetrievedChunk::rank).toList());
+    }
+
+    @Test
+    void rerankEnabledReordersCandidates() {
+        EmbeddingClient embeddingClient = mock(EmbeddingClient.class);
+        VectorStore vectorStore = mock(VectorStore.class);
+        Bm25Store bm25Store = mock(Bm25Store.class);
+        RerankClient rerankClient = mock(RerankClient.class);
+
+        RagProperties ragProperties = new RagProperties();
+        ragProperties.setTopK(10);
+        ragProperties.setFinalTopN(3);
+        ragProperties.setRrfK(60);
+        ragProperties.getRetrieval().getRerank().setEnabled(true);
+        ragProperties.getRetrieval().getRerank().setCandidateSize(10);
+        ragProperties.getRetrieval().getRerank().setFinalTopN(3);
+
+        when(embeddingClient.embed(anyString())).thenReturn(new float[]{0.1f, 0.2f});
+        when(vectorStore.searchByVector(any(float[].class), anyInt())).thenReturn(List.of(
+                new VectorSearchResult(1L, 100L, 1, "doc1 content", "A.pdf", 0.95),
+                new VectorSearchResult(2L, 101L, 1, "doc2 content", "B.pdf", 0.90),
+                new VectorSearchResult(3L, 102L, 1, "doc3 content", "C.pdf", 0.85)
+        ));
+        when(bm25Store.search(anyString(), anyInt())).thenReturn(List.of());
+
+        QueryRewriter queryRewriter = mock(QueryRewriter.class);
+        HydeExpander hydeExpander = mock(HydeExpander.class);
+        when(queryRewriter.expand(anyString())).thenReturn(List.of("query"));
+        when(hydeExpander.hypothesize(anyString())).thenReturn(Optional.empty());
+
+        // rerank 返回反序：index 2, 1, 0
+        when(rerankClient.rerank(anyString(), anyList(), anyInt(), anyString()))
+                .thenReturn(Optional.of(List.of(
+                        new RerankResult(2, 0.95),
+                        new RerankResult(1, 0.80),
+                        new RerankResult(0, 0.70)
+                )));
+
+        HybridRetriever retriever = new HybridRetriever(embeddingClient, vectorStore, bm25Store, ragProperties,
+                queryRewriter, hydeExpander, rerankClient);
+
+        List<RetrievedChunk> results = retriever.retrieve("query");
+
+        // rerank 反序：chunkId 3, 2, 1
+        assertEquals(List.of(3L, 2L, 1L), results.stream().map(RetrievedChunk::chunkId).toList());
+        assertEquals(3, results.size());
+    }
+
+    @Test
+    void rerankFailureFallsBackToRrfOrder() {
+        EmbeddingClient embeddingClient = mock(EmbeddingClient.class);
+        VectorStore vectorStore = mock(VectorStore.class);
+        Bm25Store bm25Store = mock(Bm25Store.class);
+        RerankClient rerankClient = mock(RerankClient.class);
+
+        RagProperties ragProperties = new RagProperties();
+        ragProperties.setTopK(10);
+        ragProperties.setFinalTopN(3);
+        ragProperties.setRrfK(60);
+        ragProperties.getRetrieval().getRerank().setEnabled(true);
+        ragProperties.getRetrieval().getRerank().setCandidateSize(10);
+        ragProperties.getRetrieval().getRerank().setFinalTopN(3);
+
+        when(embeddingClient.embed(anyString())).thenReturn(new float[]{0.1f, 0.2f});
+        when(vectorStore.searchByVector(any(float[].class), anyInt())).thenReturn(List.of(
+                new VectorSearchResult(1L, 100L, 1, "doc1 content", "A.pdf", 0.95),
+                new VectorSearchResult(2L, 101L, 1, "doc2 content", "B.pdf", 0.90),
+                new VectorSearchResult(3L, 102L, 1, "doc3 content", "C.pdf", 0.85)
+        ));
+        when(bm25Store.search(anyString(), anyInt())).thenReturn(List.of());
+
+        QueryRewriter queryRewriter = mock(QueryRewriter.class);
+        HydeExpander hydeExpander = mock(HydeExpander.class);
+        when(queryRewriter.expand(anyString())).thenReturn(List.of("query"));
+        when(hydeExpander.hypothesize(anyString())).thenReturn(Optional.empty());
+
+        // rerank 失败，返回 empty
+        when(rerankClient.rerank(anyString(), anyList(), anyInt(), anyString()))
+                .thenReturn(Optional.empty());
+
+        HybridRetriever retriever = new HybridRetriever(embeddingClient, vectorStore, bm25Store, ragProperties,
+                queryRewriter, hydeExpander, rerankClient);
+
+        List<RetrievedChunk> results = retriever.retrieve("query");
+
+        // 回退 RRF 序：chunkId 1, 2, 3（按向量分数降序）
+        assertEquals(List.of(1L, 2L, 3L), results.stream().map(RetrievedChunk::chunkId).toList());
+        assertEquals(3, results.size());
     }
 }

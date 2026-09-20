@@ -52,6 +52,12 @@ class AgentLoopTest {
         return new RagProperties();
     }
 
+    private static RagProperties ragPropertiesWithCitationTopN(int topN) {
+        RagProperties p = new RagProperties();
+        p.getAgent().setCitationTopN(topN);
+        return p;
+    }
+
     @Test
     void noToolNeededSingleRoundFinal() {
         AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
@@ -361,8 +367,8 @@ class AgentLoopTest {
         when(llmClient.chatWithTools(anyList(), anyList()))
                 .thenReturn(new LlmResponse("正常终答。", List.of()));
 
-        // rerank 未启用（ragProperties() 默认 enabled=false，rerankClient=null）→ fail-open 保留前 8 个
-        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
+        // rerank 未启用（默认 enabled=false，rerankClient=null）→ fail-open 保留前 8 个
+        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragPropertiesWithCitationTopN(8), null);
 
         AgentContext ctx = new AgentContext(
                 List.of(ChatMessage.user("查一下")),
@@ -408,7 +414,7 @@ class AgentLoopTest {
                 .thenReturn(new LlmResponse(leakedContent, List.of()));
         when(llmClient.chat(anyList())).thenReturn("干净合成答案。");
 
-        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
+        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragPropertiesWithCitationTopN(8), null);
 
         AgentContext ctx = new AgentContext(
                 List.of(ChatMessage.user("什么是 RAG")),
@@ -437,7 +443,7 @@ class AgentLoopTest {
         when(rerankClient.rerank(any(), anyList(), any(Integer.class), any()))
                 .thenReturn(Optional.of(order));
 
-        RagProperties props = ragProperties();
+        RagProperties props = ragPropertiesWithCitationTopN(8);
         props.getRetrieval().getRerank().setEnabled(true);
 
         when(llmClient.chatWithTools(anyList(), anyList()))

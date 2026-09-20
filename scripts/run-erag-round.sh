@@ -14,6 +14,7 @@
 #       MODE       hybrid | vector | bm25
 #       REWRITER   0|1（默认 0）
 #       HYDE       0|1（默认 0）
+#       RERANK     0|1（默认 0，Phase 7 新增）
 #
 # 环境变量覆盖：
 #       RAG_DATA_DIR   本地数据目录（默认 ./target/erag-real-data-v3，era-2 修复语料）
@@ -36,6 +37,7 @@ ROUND_ID="$1"
 MODE="${2:-hybrid}"
 REWRITER="${3:-0}"
 HYDE="${4:-0}"
+RERANK="${5:-0}"
 case "$MODE" in
   hybrid|vector|bm25) ;;
   *) echo "错误 MODE 必须是 hybrid vector bm25 之一 收到 $MODE" >&2; exit 1 ;;
@@ -73,13 +75,14 @@ export RAG_MEMORY_TYPE=memory
 export RAG_RETRIEVAL_MODE="$MODE"
 export RAG_RETRIEVAL_REWRITER_ENABLED="$REWRITER"
 export RAG_RETRIEVAL_HYDE_ENABLED="$HYDE"
+export RAG_RETRIEVAL_RERANK_ENABLED="$RERANK"
 export LLM_TIMEOUT_SECONDS="${LLM_TIMEOUT_SECONDS:-120}"
 # 作答模式：rag（默认）| agent（ReAct 工具循环，r07）| multi-agent | auto
 export EVAL_ERAG_CHAT_MODE="${EVAL_ERAG_CHAT_MODE:-rag}"
 
 ROUNDS_DIR="${ROUNDS_DIR:-eval-answers/rounds}"
 
-echo "▶ 轮次 $ROUND_ID | mode=$MODE | rewriter=$REWRITER | hyde=$HYDE"
+echo "▶ 轮次 $ROUND_ID | mode=$MODE | rewriter=$REWRITER | hyde=$HYDE | rerank=$RERANK"
 echo "▶ data-dir=$RAG_DATA_DIR | answers → $ROUNDS_DIR/$ROUND_ID.jsonl"
 echo "▶ 启动成功标志：JVM 日志出现 \"EnterpriseRAG-Bench 评测启动：bench=enterpriserag\""
 echo

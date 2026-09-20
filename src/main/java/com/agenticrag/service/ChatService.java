@@ -106,7 +106,7 @@ public class ChatService {
 
     private ChatResult runAgentSafely(ChatEventSink sink, String sessionId, String userMessage) {
         try {
-            return runAgent(sink, sessionId);
+            return runAgent(sink, sessionId, userMessage);
         } catch (Exception e) {
             log.warn("Agent chat failed, sessionId={}, fallback to RAG", sessionId, e);
             sink.onThinking("⚠️ Agent 链路异常，正在降级到普通检索回答");
@@ -181,9 +181,9 @@ public class ChatService {
         return streamLlmAnswer(sink, sessionId, messages, safeRelevant, ChatMode.RAG, List.of(), false);
     }
 
-    private ChatResult runAgent(ChatEventSink sink, String sessionId) {
+    private ChatResult runAgent(ChatEventSink sink, String sessionId, String userMessage) {
         List<ToolInvocation> toolInvocations = new ArrayList<>();
-        AgentContext ctx = new AgentContext(buildAgentMessages(sessionId), toToolSchemas(), llmProperties.getMaxAgentRounds());
+        AgentContext ctx = new AgentContext(buildAgentMessages(sessionId), toToolSchemas(), llmProperties.getMaxAgentRounds(), userMessage);
         StepReporter reporter = new StepReporter() {
             @Override
             public void onThinking(String toolName) {
