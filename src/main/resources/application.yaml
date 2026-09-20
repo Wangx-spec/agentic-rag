@@ -30,6 +30,13 @@ rag:
     rewriter-enabled: ${RAG_RETRIEVAL_REWRITER_ENABLED:false}       # Phase 3.1：LLM 查询改写（多查询并行检索）
     rewriter-min-tokens: ${RAG_RETRIEVAL_REWRITER_MIN_TOKENS:15}    # 短查询不触发改写
     hyde-enabled: ${RAG_RETRIEVAL_HYDE_ENABLED:false}               # Phase 3.2：HyDE 假设性答案检索
+    rerank:
+      enabled: ${RAG_RETRIEVAL_RERANK_ENABLED:false}                 # Phase 7：Rerank 精排总开关
+      model: ${RAG_RETRIEVAL_RERANK_MODEL:BAAI/bge-reranker-v2-m3}  # 硅基流动 rerank 模型
+      candidate-size: ${RAG_RETRIEVAL_RERANK_CANDIDATE_SIZE:20}     # RRF 后送 rerank 的候选数
+      final-top-n: ${RAG_RETRIEVAL_RERANK_FINAL_TOP_N:}             # 精排后保留数（空=回退 final-top-n）
+  agent:
+    citation-top-n: ${RAG_AGENT_CITATION_TOP_N:8}   # Phase 7：终答引用裁剪上限（累积 sources 超额时按 rerank 精排裁剪）
   embedding-dim: ${RAG_EMBEDDING_DIM:4096}
   data-dir: ${RAG_DATA_DIR:./data}
   min-chunk-size: 80

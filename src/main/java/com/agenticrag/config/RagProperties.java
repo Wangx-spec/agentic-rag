@@ -31,6 +31,13 @@ public class RagProperties {
     private int minChunkSize = 80;
     private Retrieval retrieval = new Retrieval();
     private Vector vector = new Vector();
+    private Agent agent = new Agent();
+
+    @Data
+    public static class Agent {
+        /** Agent 终答引用裁剪上限：累积 sources 超过该数时按 rerank 精排裁剪（fail-open 保留前 N 个） */
+        private int citationTopN = 8;
+    }
 
     @Data
     public static class Vector {
@@ -48,6 +55,20 @@ public class RagProperties {
         private int rewriterMinTokens = 15;
         /** Phase 3.2：HyDE 假设性答案扩展开关（附加一路向量检索） */
         private boolean hydeEnabled = false;
+        /** Phase 7：Rerank 精排配置 */
+        private Rerank rerank = new Rerank();
+    }
+
+    @Data
+    public static class Rerank {
+        /** Rerank 总开关（默认关闭） */
+        private boolean enabled = false;
+        /** Rerank 模型名（硅基流动支持的模型，默认 bge-reranker-v2-m3） */
+        private String model = "BAAI/bge-reranker-v2-m3";
+        /** 送入 rerank 的候选文档数量（RRF 后取 top N 进行精排） */
+        private int candidateSize = 20;
+        /** 精排后保留数量（null 时回退为 retrieval.finalTopN） */
+        private Integer finalTopN;
     }
 
     @Data

@@ -17,15 +17,22 @@ public class AgentContext {
     private final List<ChatMessage> messages;
     private final List<ToolSchema> availableTools;
     private final int maxRounds;
+    private final String originalQuery;
     private int currentRound;
     private final List<String> stateTrajectory;
     private final Map<Long, RetrievedChunk> sourcesByChunkId;
 
 
     public AgentContext(List<ChatMessage> messages, List<ToolSchema> availableTools, int maxRounds) {
+        this(messages, availableTools, maxRounds, null);
+    }
+
+    public AgentContext(List<ChatMessage> messages, List<ToolSchema> availableTools,
+                        int maxRounds, String originalQuery) {
         this.messages = new ArrayList<>(messages);
         this.availableTools = Collections.unmodifiableList(new ArrayList<>(availableTools));
         this.maxRounds = maxRounds;
+        this.originalQuery = originalQuery;
         this.currentRound = 0;
         this.stateTrajectory = new ArrayList<>();
         this.sourcesByChunkId = new LinkedHashMap<>();
@@ -82,5 +89,18 @@ public class AgentContext {
 
     public List<RetrievedChunk> getSources() {
         return List.copyOf(sourcesByChunkId.values());
+    }
+
+    /**
+     * 以裁剪后的引用集替换累积 sources（终答引用裁剪用）。
+     * 判分只应看到终答实际依据的文档，而非多轮检索的累积全集。
+     */
+    public void replaceSources(List<RetrievedChunk> chunks) {
+        sourcesByChunkId.clear();
+        addSources(chunks);
+    }
+
+    public String getOriginalQuery() {
+        return originalQuery;
     }
 }
