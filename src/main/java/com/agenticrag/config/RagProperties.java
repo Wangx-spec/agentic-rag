@@ -37,6 +37,10 @@ public class RagProperties {
     public static class Agent {
         /** Agent 终答引用裁剪上限：累积 sources 超过该数时按 rerank 精排裁剪（fail-open 保留前 N 个） */
         private int citationTopN = 8;
+        /** get_document 工具正文截断上限（字符数），超出部分截断并标注总字符数 */
+        private int documentMaxChars = 8000;
+        /** list_documents 工具默认/最大返回篇数 */
+        private int listDocumentsLimit = 20;
     }
 
     @Data
