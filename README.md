@@ -80,18 +80,26 @@ Agentic RAG 平台：M6 性能优化与泛化性建设。
 
 **r08 的关键认知（rerank 在 RAG 模式为何近乎无效）**：invalid extra 统计的是"引用的文档里几个非 gold"——rerank 只在 top-20 内部重排、引用数不变；且 benchmark 陷阱文档是语义极近的近重复冲突版，cross-encoder 同样给高分。rerank 的真正价值在 agent 模式剪枝（r07 累积 2-20 引用），不在 RAG 模式增益。
 
-### Phase 5（泛化性评估）
+### Phase 5（泛化性评估，2026-09-21 实测）
 
-| 变体类型 | Recall | Recall Drop | 验收门槛 |
-|----------|--------|-------------|----------|
-| 原始（全开配置） | 66.20% | — | — |
-| 去术语化 | TBD | TBD% | < 15% |
-| 短查询 | TBD | TBD% | < 10% |
-| 中译 | TBD | TBD% | 参考 |
-| 通道独立贡献率 | TBD% | — | > 10% |
+> 用最终配置（r07d：AGENT + 改写 + HyDE + rerank + 引用裁剪 top5）跑三类扰动变体（各 64 题，gold 文档与题型零漂移），对照基线为 r07d 原题成绩。三轮判分均零网络污染。
+
+| 变体类型 | Recall | Comp | Corr | 答对 | Recall Drop | 验收门槛 | 判定 |
+|----------|--------|------|------|------|-------------|----------|------|
+| 原始（r07d 基线） | 68.28% | 53.29% | 43.75% | 28/64 | — | — | — |
+| 去术语化（英文口语） | 40.23% | 40.71% | 26.56% | 17/64 | **-28.1pp** | < 15pp | ❌ |
+| 短查询（关键词序列） | 55.72% | 37.29% | 25.00% | 16/64 | **-12.6pp** | < 10pp | ❌（接近） |
+| 中译（英文语料中文提问） | 21.88% | 23.43% | 14.06% | 9/64 | -46.4pp | 参考 | — |
+
+**泛化性归因（逐题型对比 + 零召回统计）**：
+
+- **主要瓶颈是查询侧语义鸿沟，不是通道缺陷**：v1 零召回 31/64 题、v2 零召回 21/64 题。constrained 题型最抗造（v1 仅 -27pp，因含工单号/日期等 BM25 可锚定的精确 token）；semantic 题型最脆弱（v2 短查询下 73.3%→33.3%，改写/ HyDE 依赖完整问句，关键词序列使扩展质量塌缩）。
+- **跨语言是独立失效域**：v3 中译 constrained/completeness 题型 recall 归零（中文查询 vs 英文语料，BM25 完全失效，embedding 跨语言对齐不足）。这是参考项（语料为英文），但说明系统没有跨语言能力。
+- **启示**：查询侧扩展（改写/HyDE）在原题上增益明显，但对"不像原题"的问法泛化不足——下一步方向是 agent 规划期的查询理解前置（口语→专业检索词重写），而非继续堆叠同构扩展。
 
 ### 已知短板（诚实披露）
 
+- **泛化性（Phase 5 实测，最大短板）**：去术语化变体 recall -28.1pp、短查询 -12.6pp——查询侧扩展（改写/HyDE）对"不像原题"的问法泛化不足；跨语言（中文问英文库）constrained/completeness recall 归零
 - completeness 题型答对率仍低（r07b 1/11）：答案子项覆盖不全（检索已到位，生成层拼全能力不足）
 - constrained correctness 27%（r07b）：细节复述（ticket 号/日期）仍常遗漏，尽管 recall 已达 95.5%
 - agent 模式 invalid extra 3.27（r07d，接近 RAG 模式 3.09）：本质是多轮检索的结构性代价——extra ≈ 引用数 - gold 数；`RAG_AGENT_CITATION_TOP_N`（默认 5）提供 recall/corr 调节旋钮；benchmark 陷阱文档为语义极近的冲突版，rerank 无法区分
@@ -142,16 +150,21 @@ RAG_RETRIEVAL_REWRITER_ENABLED=true RAG_RETRIEVAL_HYDE_ENABLED=true mvn test -Dt
 ## Phase 5 泛化性评估操作
 
 ```bash
-# 1. 生成变体（三类各 64 题）
+# 1. 生成变体（三类各 64 题，输出到 data/derived/）
 python3 scripts/generate_query_variants.py \
-  --input ./data/benchmark/questions.jsonl \
+  --input src/main/resources/eval/datasets/enterprise-rag-64.jsonl \
   --out ./data/derived \
   --base-url https://api.siliconflow.cn/v1 \
   --api-key $LLM_API_KEY \
   --model Qwen/Qwen2.5-7B-Instruct
 
-# 2. 用变体跑评测（替换 questions.jsonl 路径）
-# 3. 对比原始 recall 计算 Recall Drop
+# 2. 用变体跑评测（EVAL_ERAG_QUESTIONS 指定外部题目文件，空则回退内置 64 题）
+EVAL_ERAG_QUESTIONS=data/derived/questions-variants-dejargon.jsonl \
+EVAL_ERAG_CHAT_MODE=agent ROUNDS_DIR=eval-answers/rounds-era2 \
+  ./scripts/run-erag-round.sh v1-dejargon hybrid 1 1 1
+ROUNDS_DIR=eval-answers/rounds-era2 ./scripts/run-erag-judge.sh v1-dejargon
+
+# 3. 对比原始 recall 计算 Recall Drop（对照基线 r07d）
 ```
 
 ## 环境变量
