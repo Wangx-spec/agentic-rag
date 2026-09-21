@@ -46,6 +46,13 @@ class GetDocumentToolTest {
     }
 
     @Test
+    void skipsRegistrationWhenDocumentToolsDisabled() {
+        ragProperties.getAgent().setDocumentToolsEnabled(false);
+        tool.register();
+        org.mockito.Mockito.verifyNoInteractions(toolRegistry);
+    }
+
+    @Test
     void returnsMetadataAndBodyForExistingDocument() {
         when(documentRepository.findById(1L)).thenReturn(doneDoc(1L, "员工手册.md", 2));
         when(documentRepository.findChunksByDocumentId(1L)).thenReturn(List.of(

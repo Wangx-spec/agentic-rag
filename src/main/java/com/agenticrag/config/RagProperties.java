@@ -41,6 +41,8 @@ public class RagProperties {
         private int documentMaxChars = 8000;
         /** list_documents 工具默认/最大返回篇数 */
         private int listDocumentsLimit = 20;
+        /** get_document/list_documents 注册总开关：false 时两工具不注册（评测冻结配置用，r08b 消融为负后回退 r07d 口径） */
+        private boolean documentToolsEnabled = true;
     }
 
     @Data

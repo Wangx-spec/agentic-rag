@@ -44,7 +44,15 @@ public class GetDocumentTool implements Tool {
 
     @PostConstruct
     public void register() {
+        if (!documentToolsEnabled()) {
+            log.info("document-tools-enabled=false，跳过注册工具: {}", NAME);
+            return;
+        }
         toolRegistry.register(this);
+    }
+
+    private boolean documentToolsEnabled() {
+        return ragProperties.getAgent() == null || ragProperties.getAgent().isDocumentToolsEnabled();
     }
 
     @Override

@@ -56,6 +56,13 @@ class ListDocumentsToolTest {
     }
 
     @Test
+    void skipsRegistrationWhenDocumentToolsDisabled() {
+        ragProperties.getAgent().setDocumentToolsEnabled(false);
+        tool.register();
+        org.mockito.Mockito.verifyNoInteractions(toolRegistry);
+    }
+
+    @Test
     void listsDocumentsWithIdTitleChunkCountAndSummary() {
         when(documentRepository.findAll()).thenReturn(List.of(doneDoc(1L, "员工手册.md")));
         when(documentRepository.findChunksByDocumentId(1L)).thenReturn(List.of(
