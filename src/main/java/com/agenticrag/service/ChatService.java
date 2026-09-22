@@ -6,6 +6,8 @@ import com.agenticrag.agent.StepReporter;
 import com.agenticrag.config.LlmProperties;
 import com.agenticrag.intent.Intent;
 import com.agenticrag.intent.IntentClassifier;
+import com.agenticrag.intent.QueryUnderstanding;
+import com.agenticrag.intent.QueryUnderstandingService;
 import com.agenticrag.llm.LlmClient;
 import com.agenticrag.llm.dto.ChatMessage;
 import com.agenticrag.llm.dto.ToolSchema;
@@ -20,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Slf4j
 @Service
@@ -36,6 +39,7 @@ public class ChatService {
     private final ToolRegistry toolRegistry;
     private final IntentClassifier intentClassifier;
     private final MultiAgentOrchestrator multiAgentOrchestrator;
+    private final QueryUnderstandingService queryUnderstandingService;
 
     public ChatResult chat(String sessionId, String userMessage, ChatMode mode, ChatEventSink sink) {
         if (userMessage == null || userMessage.isBlank()) {
@@ -183,7 +187,11 @@ public class ChatService {
 
     private ChatResult runAgent(ChatEventSink sink, String sessionId, String userMessage) {
         List<ToolInvocation> toolInvocations = new ArrayList<>();
-        AgentContext ctx = new AgentContext(buildAgentMessages(sessionId), toToolSchemas(), llmProperties.getMaxAgentRounds(), userMessage);
+        Optional<QueryUnderstanding> understanding = understandForAgent(userMessage);
+        List<ChatMessage> agentMessages = buildAgentMessages(sessionId);
+        understanding.filter(this::hasRetrievalGuidance)
+                .ifPresent(value -> agentMessages.add(ChatMessage.system(buildRetrievalGuidance(value))));
+        AgentContext ctx = new AgentContext(agentMessages, toToolSchemas(), llmProperties.getMaxAgentRounds(), userMessage);
         StepReporter reporter = new StepReporter() {
             @Override
             public void onThinking(String toolName) {
@@ -210,8 +218,35 @@ public class ChatService {
         streamAnswer(sink, finalAnswer);
         memory.append(sessionId, ChatMessage.assistant(finalAnswer));
         sink.onDone(ctx.getSources());
-        return new ChatResult(finalAnswer, ctx.getSources(), ChatMode.AGENT, null, List.copyOf(toolInvocations), false);
+        return new ChatResult(finalAnswer, ctx.getSources(), ChatMode.AGENT,
+                understanding.map(QueryUnderstanding::intent).orElse(null),
+                List.copyOf(toolInvocations), false);
     }
+
+    private Optional<QueryUnderstanding> understandForAgent(String userMessage) {
+        if (queryUnderstandingService == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(queryUnderstandingService.understand(userMessage)).orElse(Optional.empty());
+    }
+
+    private boolean hasRetrievalGuidance(QueryUnderstanding understanding) {
+        return understanding.normalizedQuery() != null || !understanding.subQueries().isEmpty();
+    }
+
+    private String buildRetrievalGuidance(QueryUnderstanding understanding) {
+        StringBuilder guidance = new StringBuilder("检索引导：建议优先使用以下查询调用 search_knowledge_base：");
+        if (understanding.normalizedQuery() != null) {
+            guidance.append("\"").append(understanding.normalizedQuery()).append("\"");
+        }
+        if (!understanding.subQueries().isEmpty()) {
+            guidance.append("。该问题包含多个子问题，建议逐一检索：")
+                    .append(String.join("；", understanding.subQueries()));
+        }
+        guidance.append("。最终回答必须对齐用户原始问题。");
+        return guidance.toString();
+    }
+
 
     private ChatResult streamLlmAnswer(ChatEventSink sink,
                                        String sessionId,

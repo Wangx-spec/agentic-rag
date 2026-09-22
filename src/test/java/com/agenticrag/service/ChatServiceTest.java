@@ -4,6 +4,8 @@ import com.agenticrag.agent.AgentLoop;
 import com.agenticrag.config.LlmProperties;
 import com.agenticrag.intent.Intent;
 import com.agenticrag.intent.IntentClassifier;
+import com.agenticrag.intent.QueryUnderstanding;
+import com.agenticrag.intent.QueryUnderstandingService;
 import com.agenticrag.llm.LlmClient;
 import com.agenticrag.llm.dto.ChatMessage;
 import com.agenticrag.memory.ConversationMemory;
@@ -19,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -48,6 +51,8 @@ class ChatServiceTest {
     private IntentClassifier intentClassifier;
     @Mock
     private MultiAgentOrchestrator multiAgentOrchestrator;
+    @Mock
+    private QueryUnderstandingService queryUnderstandingService;
 
     private ChatService newService() {
         LlmProperties properties = new LlmProperties();
@@ -57,7 +62,8 @@ class ChatServiceTest {
         properties.setEmbeddingModel("embed-demo");
         properties.setMemoryRounds(5);
         properties.setMaxAgentRounds(5);
-        return new ChatService(properties, llmClient, memory, hybridRetriever, agentLoop, toolRegistry, intentClassifier, multiAgentOrchestrator);
+        return new ChatService(properties, llmClient, memory, hybridRetriever, agentLoop, toolRegistry,
+                intentClassifier, multiAgentOrchestrator, queryUnderstandingService);
     }
 
     @Test
@@ -108,6 +114,49 @@ class ChatServiceTest {
         assertTrue(result.degraded());
         assertTrue(events.stream().anyMatch(e -> e.contains("Agent 链路异常")));
         assertEquals("状态机分为四个状态 [1].", result.answer());
+    }
+
+    @Test
+    void agentModeInjectsRetrievalGuidanceAndPreservesOriginalQuestion() {
+        ChatService service = newService();
+        doNothing().when(memory).append(anyString(), any(ChatMessage.class));
+        when(memory.load(anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("原始问题")));
+        when(toolRegistry.all()).thenReturn(Map.of());
+        when(queryUnderstandingService.understand("原始问题")).thenReturn(Optional.of(
+                new QueryUnderstanding(Intent.KB_QA, 0.95, "规范化检索问题", List.of())
+        ));
+        when(agentLoop.run(any(), any())).thenAnswer(invocation -> {
+            com.agenticrag.agent.AgentContext context = invocation.getArgument(0);
+            assertEquals("原始问题", context.getOriginalQuery());
+            assertTrue(context.getMessages().stream()
+                    .anyMatch(message -> message.content().contains("规范化检索问题")));
+            return "答案";
+        });
+
+        ChatResult result = service.chat("s1", "原始问题", ChatMode.AGENT, sink(new ArrayList<>()));
+
+        assertEquals(Intent.KB_QA, result.routedIntent());
+    }
+
+    @Test
+    void agentModeSkipsGuidanceWhenNothingToGuide() {
+        ChatService service = newService();
+        doNothing().when(memory).append(anyString(), any(ChatMessage.class));
+        when(memory.load(anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("你好")));
+        when(toolRegistry.all()).thenReturn(Map.of());
+        when(queryUnderstandingService.understand("你好")).thenReturn(Optional.of(
+                new QueryUnderstanding(Intent.CHAT, 0.95, null, List.of())
+        ));
+        when(agentLoop.run(any(), any())).thenAnswer(invocation -> {
+            com.agenticrag.agent.AgentContext context = invocation.getArgument(0);
+            assertTrue(context.getMessages().stream()
+                    .noneMatch(message -> message.content().contains("检索引导")));
+            return "答案";
+        });
+
+        ChatResult result = service.chat("s1", "你好", ChatMode.AGENT, sink(new ArrayList<>()));
+
+        assertEquals(Intent.CHAT, result.routedIntent());
     }
 
     @Test

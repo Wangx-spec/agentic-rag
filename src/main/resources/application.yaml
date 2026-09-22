@@ -36,6 +36,7 @@ rag:
       candidate-size: ${RAG_RETRIEVAL_RERANK_CANDIDATE_SIZE:20}     # RRF 后送 rerank 的候选数
       final-top-n: ${RAG_RETRIEVAL_RERANK_FINAL_TOP_N:}             # 精排后保留数（空=回退 final-top-n）
   agent:
+    query-understanding-enabled: ${RAG_AGENT_QUERY_UNDERSTANDING_ENABLED:true} # AGENT 规划前置查询理解开关
     citation-top-n: ${RAG_AGENT_CITATION_TOP_N:5}   # Phase 7：终答引用裁剪上限。r07c/r07d 消融：top5 时 corr 43.75% 最优（更少引用=更少上下文噪声）
     document-max-chars: ${RAG_AGENT_DOCUMENT_MAX_CHARS:8000}   # get_document 正文截断上限（字符数）
     list-documents-limit: ${RAG_AGENT_LIST_DOCUMENTS_LIMIT:20} # list_documents 默认/最大返回篇数

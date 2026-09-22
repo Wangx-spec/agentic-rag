@@ -35,6 +35,8 @@ public class RagProperties {
 
     @Data
     public static class Agent {
+        /** AGENT ReAct 前置查询理解开关，失败时自动跳过。 */
+        private boolean queryUnderstandingEnabled = true;
         /** Agent 终答引用裁剪上限：累积 sources 超过该数时按 rerank 精排裁剪（fail-open 保留前 N 个） */
         private int citationTopN = 8;
         /** get_document 工具正文截断上限（字符数），超出部分截断并标注总字符数 */
