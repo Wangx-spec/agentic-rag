@@ -74,11 +74,25 @@ Agentic RAG 平台：M6 性能优化与泛化性建设。
 
 注：†表示 r07 的 32.81% 因 41 题泄漏作废，r07b 起为有效数字。
 
-**r07d 是最终最佳配置**：答对 28/64、correctness 43.75%、completeness 53.29% 三项历史最高，invalid extra 3.27 接近 RAG 模式水平（3.09）。终答泄漏 41/64 → 0/64（32 题触发检测走 RAG 合成降级）。
+**r07d 是引用裁剪消融内的最佳配置**：答对 28/64、correctness 43.75%、completeness 53.29%，invalid extra 3.27 接近 RAG 模式水平（3.09）。终答泄漏 41/64 → 0/64（32 题触发检测走 RAG 合成降级）。在此口径上叠加查询理解前置即为最终定版（见下方 Phase 8）。
 
 **三轮裁剪消融揭示的核心规律——更少引用 = 更高 correctness**：top20（不裁剪）corr 40.62 → top8 corr 39.06 → **top5 corr 43.75**。裁剪不仅改善引用精度指标，还通过减少上下文噪声直接提升生成质量（semantic 题型 corr 60%）。代价是 recall 77.38→68.28（top5 上限压制多 gold 文档题，completeness 题型 recall 38.2%）。`RAG_AGENT_CITATION_TOP_N`（默认已固化 5）提供 recall/corr 调节旋钮。
 
 **r08 的关键认知（rerank 在 RAG 模式为何近乎无效）**：invalid extra 统计的是"引用的文档里几个非 gold"——rerank 只在 top-20 内部重排、引用数不变；且 benchmark 陷阱文档是语义极近的近重复冲突版，cross-encoder 同样给高分。rerank 的真正价值在 agent 模式剪枝（r07 累积 2-20 引用），不在 RAG 模式增益。
+
+### Phase 8（查询理解前置，2026-09-22 实测 · 最终定版）
+
+> 在 AGENT 模式 ReAct 循环开始前新增一步**查询理解**：一次 LLM 调用产出「意图 + 规范查询」（MULTI_TASK 额外产出子查询列表），注入检索引导，替代模型自己组织的低质量查询（口语 → 检索友好关键词）。
+> 评测口径：r07d 配置 + 查询理解开 + 文档工具关（`RAG_AGENT_DOCUMENT_TOOLS_ENABLED=false`）。同配置 3 次运行取均值。
+
+| 轮次 | Recall | Completeness | Correctness | Invalid | 答对 |
+|------|--------|-------------|-------------|---------|------|
+| r09 | 70.92% | 54.40% | 50.00% | 3.12 | 32/64 |
+| r09final | 68.35% | 55.10% | 42.19% | 3.22 | 27/64 |
+| r09final2 | 74.79% | 60.02% | 46.88% | 3.17 | 30/64 |
+| **三次均值（定版）** | **71.4%** | **56.5%** | **46.4%** | **3.2** | **30/64** |
+
+> **采样方差说明**：64 题规模下单次运行存在 ±3~4pp 采样波动（correctness 波动最大，三次极差 7.8pp），故定版采用 N=3 均值而非单次最优值。查询理解前置相对 r07d 基线（recall 68.28 / corr 43.75）呈正向趋势（+3.1 / +2.6pp），但统计上不显著——因零回退证据、且 comp 提升相对一致，保留默认开启。
 
 ### Phase 5（泛化性评估，2026-09-21 实测）
 
@@ -95,7 +109,7 @@ Agentic RAG 平台：M6 性能优化与泛化性建设。
 
 - **主要瓶颈是查询侧语义鸿沟，不是通道缺陷**：v1 零召回 31/64 题、v2 零召回 21/64 题。constrained 题型最抗造（v1 仅 -27pp，因含工单号/日期等 BM25 可锚定的精确 token）；semantic 题型最脆弱（v2 短查询下 73.3%→33.3%，改写/ HyDE 依赖完整问句，关键词序列使扩展质量塌缩）。
 - **跨语言是独立失效域**：v3 中译 constrained/completeness 题型 recall 归零（中文查询 vs 英文语料，BM25 完全失效，embedding 跨语言对齐不足）。这是参考项（语料为英文），但说明系统没有跨语言能力。
-- **启示**：查询侧扩展（改写/HyDE）在原题上增益明显，但对"不像原题"的问法泛化不足——下一步方向是 agent 规划期的查询理解前置（口语→专业检索词重写），而非继续堆叠同构扩展。
+- **启示**：查询侧扩展（改写/HyDE）在原题上增益明显，但对"不像原题"的问法泛化不足——已通过 agent 规划期的**查询理解前置**（口语→专业检索词重写）实现（见 Phase 8），把去术语化变体 recall 差距从 -28.1pp 收窄到 -24.2pp（r09v1 单次），仍未达 <15pp 目标，属遗留短板。
 
 ### 已知短板（诚实披露）
 
@@ -181,6 +195,9 @@ ROUNDS_DIR=eval-answers/rounds-era2 ./scripts/run-erag-judge.sh v1-dejargon
 | `RAG_RETRIEVAL_RERANK_CANDIDATE_SIZE` | `20` | 送入 rerank 的候选数 |
 | `RAG_RETRIEVAL_RERANK_FINAL_TOP_N` | _空_ | 精排后保留数，空则回退 `final-top-n` |
 | `RAG_DATA_DIR` | `./data` | SQLite 本地数据目录 |
+| `RAG_AGENT_CITATION_TOP_N` | `5` | Agent 终答引用裁剪上限（r07d 定版） |
+| `RAG_AGENT_QUERY_UNDERSTANDING_ENABLED` | `true` | Phase 8 查询理解前置开关 |
+| `RAG_AGENT_DOCUMENT_TOOLS_ENABLED` | `true` | 文档访问工具注册开关（定版评测口径设 `false`） |
 
 ## 开发
 

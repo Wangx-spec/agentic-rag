@@ -19,3 +19,5 @@ enterpriserag-report.md
 
 # 运行时数据：语料、BM25 索引、用户上传文件统一不入库
 data/
+
+.workbuddy/
