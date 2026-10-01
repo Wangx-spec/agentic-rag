@@ -45,7 +45,24 @@ rag:
   data-dir: ${RAG_DATA_DIR:./data}
   min-chunk-size: 80
   memory:
-    type: ${RAG_MEMORY_TYPE:memory}
+    # 三态：memory | redis | jdbc；默认 jdbc（M9 起短期记忆持久化到 PG；无 PG 环境可用 RAG_MEMORY_TYPE=memory 回退）
+    type: ${RAG_MEMORY_TYPE:jdbc}
+    keep-turns: ${RAG_MEMORY_KEEP_TURNS:8}              # 原文保留窗口（轮），窗口外走滚动摘要
+    summary:
+      enabled: ${RAG_MEMORY_SUMMARY_ENABLED:true}
+      max-chars: ${RAG_MEMORY_SUMMARY_MAX_CHARS:300}    # 摘要滚动上限，防累计膨胀
+    extract:
+      enabled: ${RAG_MEMORY_EXTRACT_ENABLED:true}                # 周期批量写回总开关
+      interval-turns: ${RAG_MEMORY_EXTRACT_INTERVAL_TURNS:5}     # 每 N 轮触发一次小模型「判断+提取」
+      scan-interval-ms: ${RAG_MEMORY_EXTRACT_SCAN_INTERVAL_MS:30000}  # 脏会话扫描间隔（提取不占请求线程）
+    profile-max-entries: ${RAG_MEMORY_PROFILE_MAX_ENTRIES:50}  # N4：实体记忆条目上限，超限淘汰最旧
+    ltm-max-per-user: ${RAG_MEMORY_LTM_MAX_PER_USER:200}       # N4：长期记忆条目上限
+    ltm-search-topk: ${RAG_MEMORY_LTM_SEARCH_TOPK:3}           # 读阶段长期记忆注入条数
+    llm:                                              # N2：摘要+提取共用小模型，留空回退主 LLM（同 IntentProperties 模式）
+      base-url: ${RAG_MEMORY_LLM_BASE_URL:}
+      model: ${RAG_MEMORY_LLM_MODEL:}
+      api-key: ${RAG_MEMORY_LLM_API_KEY:}
+      timeout-seconds: ${RAG_MEMORY_LLM_TIMEOUT_SECONDS:15}
   intent:
     enabled: ${RAG_INTENT_ENABLED:true}
     base-url: ${RAG_INTENT_BASE_URL:}

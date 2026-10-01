@@ -28,12 +28,12 @@ public class RedisConversationMemory implements ConversationMemory {
     private final ObjectMapper objectMapper;
 
     @Override 
-    public List<ChatMessage> load(String sessionId, int maxMessages) {
+    public List<ChatMessage> load(long userId, String sessionId, int maxMessages) {
         if (maxMessages <= 0){
             return List.of();
         }
 
-        List<ChatMessage> all = readMessages(sessionId);
+        List<ChatMessage> all = readMessages(userId, sessionId);
         if (all.size() <= maxMessages) {
             return all;
         }
@@ -42,19 +42,19 @@ public class RedisConversationMemory implements ConversationMemory {
     }
 
     @Override 
-    public void append(String sessionId, ChatMessage message) {
-        List<ChatMessage> all = new ArrayList<>(readMessages(sessionId));
+    public void append(long userId, String sessionId, ChatMessage message) {
+        List<ChatMessage> all = new ArrayList<>(readMessages(userId, sessionId));
         all.add(message);
-        writeMessages(sessionId, all);
+        writeMessages(userId, sessionId, all);
     }
 
     @Override
-    public void clear(String sessionId) {
-        redisTemplate.delete(buildKey(sessionId));  
+    public void clear(long userId, String sessionId) {
+        redisTemplate.delete(buildKey(userId, sessionId));  
     }
 
-    private List<ChatMessage> readMessages(String sessionId) {
-        String json = redisTemplate.opsForValue().get(buildKey(sessionId));
+    private List<ChatMessage> readMessages(long userId, String sessionId) {
+        String json = redisTemplate.opsForValue().get(buildKey(userId, sessionId));
         if (json == null || json.isBlank()) {
             return List.of();
         }
@@ -67,16 +67,16 @@ public class RedisConversationMemory implements ConversationMemory {
         }
     }
 
-    private void writeMessages(String sessionId, List<ChatMessage> messages) {
+    private void writeMessages(long userId, String sessionId, List<ChatMessage> messages) {
         try {
             String json = objectMapper.writeValueAsString(messages);
-            redisTemplate.opsForValue().set(buildKey(sessionId), json, TTL);
+            redisTemplate.opsForValue().set(buildKey(userId, sessionId), json, TTL);
         } catch (Exception e) {
             log.error("写入 Redis 会话记忆失败，sessionId={}", sessionId, e);
         }
     }
 
-    private String buildKey(String sessionId) {
-        return KEY_PREFIX + sessionId;
+    private String buildKey(long userId, String sessionId) {
+        return KEY_PREFIX + userId + ":" + sessionId;
     }
 }

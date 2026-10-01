@@ -15,6 +15,8 @@ import java.util.concurrent.Executor;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -55,7 +57,7 @@ class MultiAgentOrchestratorTest {
         ArgumentCaptor<List<SubTaskResult>> captor = ArgumentCaptor.forClass(List.class);
         verify(aggregator).aggregate(eq("总问题"), captor.capture(), eq(sink));
         assertTrue(captor.getValue().size() == 1 && captor.getValue().get(0).success());
-        verify(memory).append("s1", ChatMessage.assistant("最终回答"));
+        verify(memory).append(0L, "s1", ChatMessage.assistant("最终回答"));
     }
 
     @Test
@@ -68,7 +70,7 @@ class MultiAgentOrchestratorTest {
         assertFalse(handled);
         verify(subAgentExecutor, never()).execute(any(), any(Integer.class));
         verify(aggregator, never()).aggregate(any(), any(), any());
-        verify(memory, never()).append(any(), any());
+        verify(memory, never()).append(anyLong(), anyString(), any());
     }
 
     @Test
@@ -82,7 +84,7 @@ class MultiAgentOrchestratorTest {
 
         assertFalse(handled);
         verify(aggregator, never()).aggregate(any(), any(), any());
-        verify(memory, never()).append(any(), any());
+        verify(memory, never()).append(anyLong(), anyString(), any());
     }
 
     static class CapturingSink implements ChatEventSink {

@@ -27,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -62,16 +64,17 @@ class ChatServiceTest {
         properties.setEmbeddingModel("embed-demo");
         properties.setMemoryRounds(5);
         properties.setMaxAgentRounds(5);
+        // 第 10 参 memoryAssembler：单测不装配记忆读编排，传 null 退化为既有语义
         return new ChatService(properties, llmClient, memory, hybridRetriever, agentLoop, toolRegistry,
-                intentClassifier, multiAgentOrchestrator, queryUnderstandingService);
+                intentClassifier, multiAgentOrchestrator, queryUnderstandingService, null);
     }
 
     @Test
     void ragModeStreamsAnswerAndSources() {
         ChatService service = newService();
         List<String> events = new ArrayList<>();
-        doNothing().when(memory).append(anyString(), any(ChatMessage.class));
-        when(memory.load(anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("什么是 RAG？")));
+        doNothing().when(memory).append(anyLong(), anyString(), any(ChatMessage.class));
+        when(memory.load(anyLong(), anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("什么是 RAG？")));
         when(hybridRetriever.retrieve("什么是 RAG？")).thenReturn(List.of(
                 new RetrievedChunk(1L, 10L, 1, "RAG uses vector retrieval.", "guide.pdf", 1.0, 1)
         ));
@@ -95,8 +98,8 @@ class ChatServiceTest {
     void agentModeFallsBackToRagWhenAgentFails() {
         ChatService service = newService();
         List<String> events = new ArrayList<>();
-        doNothing().when(memory).append(anyString(), any(ChatMessage.class));
-        when(memory.load(anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("查一下状态机说明")));
+        doNothing().when(memory).append(anyLong(), anyString(), any(ChatMessage.class));
+        when(memory.load(anyLong(), anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("查一下状态机说明")));
         when(toolRegistry.all()).thenReturn(Map.of());
         when(agentLoop.run(any(), any())).thenThrow(new RuntimeException("agent down"));
         when(hybridRetriever.retrieve("查一下状态机说明")).thenReturn(List.of(
@@ -119,8 +122,8 @@ class ChatServiceTest {
     @Test
     void agentModeInjectsRetrievalGuidanceAndPreservesOriginalQuestion() {
         ChatService service = newService();
-        doNothing().when(memory).append(anyString(), any(ChatMessage.class));
-        when(memory.load(anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("原始问题")));
+        doNothing().when(memory).append(anyLong(), anyString(), any(ChatMessage.class));
+        when(memory.load(anyLong(), anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("原始问题")));
         when(toolRegistry.all()).thenReturn(Map.of());
         when(queryUnderstandingService.understand("原始问题")).thenReturn(Optional.of(
                 new QueryUnderstanding(Intent.KB_QA, 0.95, "规范化检索问题", List.of())
@@ -141,8 +144,8 @@ class ChatServiceTest {
     @Test
     void agentModeSkipsGuidanceWhenNothingToGuide() {
         ChatService service = newService();
-        doNothing().when(memory).append(anyString(), any(ChatMessage.class));
-        when(memory.load(anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("你好")));
+        doNothing().when(memory).append(anyLong(), anyString(), any(ChatMessage.class));
+        when(memory.load(anyLong(), anyString(), anyInt())).thenReturn(List.of(ChatMessage.user("你好")));
         when(toolRegistry.all()).thenReturn(Map.of());
         when(queryUnderstandingService.understand("你好")).thenReturn(Optional.of(
                 new QueryUnderstanding(Intent.CHAT, 0.95, null, List.of())
@@ -163,7 +166,7 @@ class ChatServiceTest {
     void autoModeRoutesMultiTaskToMultiAgent() {
         ChatService service = newService();
         List<String> events = new ArrayList<>();
-        doNothing().when(memory).append(anyString(), any(ChatMessage.class));
+        doNothing().when(memory).append(anyLong(), anyString(), any(ChatMessage.class));
         when(intentClassifier.classify("A 是什么？A 和 B 有什么区别？"))
                 .thenReturn(new IntentClassifier.IntentResult(Intent.MULTI_TASK, 0.95));
         when(multiAgentOrchestrator.orchestrate(eq("A 是什么？A 和 B 有什么区别？"), any(ChatEventSink.class), eq("s1")))
@@ -189,7 +192,7 @@ class ChatServiceTest {
 
         service.clearMemory("s1");
 
-        verify(memory).clear("s1");
+        verify(memory).clear(0L, "s1");
     }
 
     private ChatEventSink sink(List<String> events) {

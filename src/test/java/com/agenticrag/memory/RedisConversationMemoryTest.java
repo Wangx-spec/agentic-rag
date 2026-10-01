@@ -20,8 +20,9 @@ import static org.mockito.Mockito.when;
 
 class RedisConversationMemoryTest {
 
+    private static final long USER_ID = 0L;
     private static final String SESSION_ID = "s1";
-    private static final String KEY = "chat:memory:s1";
+    private static final String KEY = "chat:memory:0:s1";
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -44,7 +45,7 @@ class RedisConversationMemoryTest {
                 ChatMessage.user("你好")
         )));
 
-        memory.append(SESSION_ID, ChatMessage.assistant("你好，有什么可以帮你？"));
+        memory.append(USER_ID, SESSION_ID, ChatMessage.assistant("你好，有什么可以帮你？"));
 
         String expectedJson = objectMapper.writeValueAsString(List.of(
                 ChatMessage.user("你好"),
@@ -61,7 +62,7 @@ class RedisConversationMemoryTest {
                 ChatMessage.user("3")
         )));
 
-        List<ChatMessage> loaded = memory.load(SESSION_ID, 2);
+        List<ChatMessage> loaded = memory.load(USER_ID, SESSION_ID, 2);
 
         assertEquals(2, loaded.size());
         assertEquals("assistant", loaded.get(0).role());
@@ -72,21 +73,21 @@ class RedisConversationMemoryTest {
     void loadReturnsEmptyWhenJsonIsMalformed() {
         when(valueOperations.get(KEY)).thenReturn("{bad json");
 
-        List<ChatMessage> loaded = memory.load(SESSION_ID, 10);
+        List<ChatMessage> loaded = memory.load(USER_ID, SESSION_ID, 10);
 
         assertTrue(loaded.isEmpty());
     }
 
     @Test
     void clearDeletesRedisKey() {
-        memory.clear(SESSION_ID);
+        memory.clear(USER_ID, SESSION_ID);
 
         verify(redisTemplate).delete(KEY);
     }
 
     @Test
     void loadReturnsEmptyWhenMaxMessagesIsNonPositive() {
-        List<ChatMessage> loaded = memory.load(SESSION_ID, 0);
+        List<ChatMessage> loaded = memory.load(USER_ID, SESSION_ID, 0);
 
         assertTrue(loaded.isEmpty());
         verify(valueOperations, never()).get(anyString());

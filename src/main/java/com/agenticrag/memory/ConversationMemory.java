@@ -5,11 +5,13 @@ import com.agenticrag.llm.dto.ChatMessage;
 
 import java.util.List;
 
-
+/**
+ * 会话记忆接口
+ */
 public interface ConversationMemory {
-    List<ChatMessage> load(String sessionId, int maxMessages);
+    List<ChatMessage> load(long userId, String sessionId, int maxMessages);
 
-    void append(String sessionId, ChatMessage message);
+    void append(long userId, String sessionId, ChatMessage message);
 
-    void clear(String sessionId);
+    void clear(long userId, String sessionId);
 }

@@ -5,6 +5,7 @@ import com.agenticrag.config.McpProperties;
 import com.agenticrag.config.RagProperties;
 import com.agenticrag.eval.EvalProperties;
 import com.agenticrag.intent.IntentProperties;
+import com.agenticrag.memory.MemoryProperties;
 import com.agenticrag.rag.dto.Document;
 import com.agenticrag.rag.ingest.DocumentRepository;
 import com.agenticrag.rag.ingest.IngestTaskQueue;
@@ -17,11 +18,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.List;
 
 @SpringBootApplication
-@EnableConfigurationProperties({LlmProperties.class, RagProperties.class, McpProperties.class, IntentProperties.class, EvalProperties.class})
+@EnableScheduling
+@EnableConfigurationProperties({LlmProperties.class, RagProperties.class, McpProperties.class, IntentProperties.class, EvalProperties.class, MemoryProperties.class})
 public class AgenticRagApplication {
 
     private static final Logger log = LoggerFactory.getLogger(AgenticRagApplication.class);

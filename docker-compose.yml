@@ -19,7 +19,7 @@ services:
       RAG_VECTOR_TYPE: qdrant
       RAG_VECTOR_QDRANT_HOST: qdrant
       RAG_VECTOR_QDRANT_PORT: 6334
-      RAG_MEMORY_TYPE: redis
+      RAG_MEMORY_TYPE: jdbc
     depends_on:
       postgres:
         condition: service_healthy

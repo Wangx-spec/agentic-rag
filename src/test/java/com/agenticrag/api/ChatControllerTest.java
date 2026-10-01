@@ -37,12 +37,12 @@ class ChatControllerTest {
     @Test
     void chatStreamsEventsFromService() throws Exception {
         doAnswer(invocation -> {
-            ChatEventSink sink = invocation.getArgument(3);
+            ChatEventSink sink = invocation.getArgument(4);
             sink.onThinking("先检索知识库，再组织答案。");
             sink.onDelta("RAG answers with citations [1].");
             sink.onDone(List.of(new RetrievedChunk(1L, 10L, 1, "RAG uses vector retrieval.", "guide.pdf", 1.0, 1)));
             return new ChatResult("RAG answers with citations [1].", List.of(), ChatMode.RAG, null, List.of(), false);
-        }).when(chatService).chat(eq("s1"), eq("什么是 RAG？"), eq(ChatMode.RAG), any(ChatEventSink.class));
+        }).when(chatService).chat(eq(0L), eq("s1"), eq("什么是 RAG？"), eq(ChatMode.RAG), any(ChatEventSink.class));
 
         MvcResult result = mockMvc.perform(post("/api/chat")
                         .contentType("application/json")
@@ -86,7 +86,29 @@ class ChatControllerTest {
         mockMvc.perform(delete("/api/memory/s1"))
                 .andExpect(status().isNoContent());
 
-        verify(chatService).clearMemory("s1");
+        verify(chatService).clearMemory(0L, "s1");
+    }
+
+    @Test
+    void clearMemoryForwardsExplicitUserId() throws Exception {
+        mockMvc.perform(delete("/api/memory/s1")
+                        .param("userId", "7"))
+                .andExpect(status().isNoContent());
+
+        verify(chatService).clearMemory(7L, "s1");
+    }
+
+    @Test
+    void chatForwardsExplicitUserIdToService() throws Exception {
+        mockMvc.perform(post("/api/chat")
+                        .contentType("application/json")
+                        .content("""
+                                {"sessionId":"s2","userId":7,"message":"你好","mode":"plain"}
+                                """))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        verify(chatService).chat(eq(7L), eq("s2"), eq("你好"), eq(ChatMode.PLAIN), any(ChatEventSink.class));
     }
 
     @Test
