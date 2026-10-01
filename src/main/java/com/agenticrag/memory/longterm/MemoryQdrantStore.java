@@ -4,6 +4,7 @@ import com.agenticrag.config.RagProperties;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;
 import io.qdrant.client.ValueFactory;
+import io.qdrant.client.grpc.Collections.CollectionInfo;
 import io.qdrant.client.grpc.Collections.CreateCollection;
 import io.qdrant.client.grpc.Collections.Distance;
 import io.qdrant.client.grpc.Collections.HnswConfigDiff;
@@ -60,8 +61,12 @@ public class MemoryQdrantStore {
     public void init() {
         try {
             ensureCollection();
+        } catch (DimensionMismatchException e) {
+            // 维度不一致 = 配置错误（embedding 模型与 rag.embedding-dim 错配），
+            // 与知识库侧 QdrantStore 保持一致：fail-fast，启动即失败，不走降级。
+            throw e;
         } catch (Exception e) {
-            // N1：集合初始化失败不阻断启动，检索/写入时按降级处理
+            // N1：运行时故障（连接失败等）不阻断启动，检索/写入时按降级处理
             log.warn("记忆向量集合初始化失败，长期记忆功能将降级: {}", e.getMessage());
         }
     }
@@ -132,6 +137,15 @@ public class MemoryQdrantStore {
     private void ensureCollection() {
         boolean exists = await(client().collectionExistsAsync(COLLECTION));
         if (exists) {
+            long actual = currentDim();
+            int expected = ragProperties.getEmbeddingDim();
+            if (actual != expected) {
+                throw new DimensionMismatchException(
+                        "Qdrant 记忆集合 " + COLLECTION + " 向量维度为 " + actual
+                                + "，但当前配置 rag.embedding-dim=" + expected
+                                + "。请确认 embedding 模型与 rag.embedding-dim 配置一致；"
+                                + "若确已更换 embedding 模型，需先迁移旧记忆数据再删除旧集合重建。");
+            }
             return;
         }
         CreateCollection request = CreateCollection.newBuilder()
@@ -149,6 +163,12 @@ public class MemoryQdrantStore {
                 .build();
         await(client().createCollectionAsync(request));
         log.info("记忆向量集合已创建: {}, dim={}", COLLECTION, ragProperties.getEmbeddingDim());
+    }
+
+    /** 读取已存在集合的实际向量维度（复用知识库侧 QdrantStore 同款校验逻辑） */
+    private long currentDim() {
+        CollectionInfo info = await(client().getCollectionInfoAsync(COLLECTION));
+        return info.getConfig().getParams().getVectorsConfig().getParams().getSize();
     }
 
     private QdrantClient client() {
@@ -180,5 +200,15 @@ public class MemoryQdrantStore {
             result.add(v);
         }
         return result;
+    }
+
+    /**
+     * 记忆集合向量维度与配置不一致的配置错误。
+     * 独立于 N1 的运行时故障降级：此类错误必须 fail-fast（对齐知识库侧 QdrantStore）。
+     */
+    static class DimensionMismatchException extends RuntimeException {
+        DimensionMismatchException(String message) {
+            super(message);
+        }
     }
 }
