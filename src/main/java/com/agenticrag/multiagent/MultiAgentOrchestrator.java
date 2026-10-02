@@ -18,6 +18,8 @@ import java.util.concurrent.Executor;
 @Slf4j
 @Component
 public class MultiAgentOrchestrator {
+
+    private static final long DEFAULT_USER_ID = 0L;
     
     private final LeaderAgent leaderAgent;
     private final SubAgentExecutor subAgentExecutor;
@@ -71,7 +73,7 @@ public class MultiAgentOrchestrator {
 
         emitThinking(sink, "[多Agent] 开始汇总回答");
         Aggregator.AggregateResult aggregateResult = aggregator.aggregate(question, successful, sink);
-        memory.append(sessionId, ChatMessage.assistant(aggregateResult.answer()));
+        memory.append(DEFAULT_USER_ID, sessionId, ChatMessage.assistant(aggregateResult.answer()));
         sink.onDone(aggregateResult.sources());
         return true;
     }

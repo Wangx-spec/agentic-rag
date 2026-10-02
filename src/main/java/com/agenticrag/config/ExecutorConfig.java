@@ -1,5 +1,7 @@
 package com.agenticrag.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -7,11 +9,15 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
- * 多 Agent 链路专用线程池：与聊天链路使用的 ForkJoinPool.commonPool() 隔离，
- * 避免并行子任务批量挤占普通聊天线程；饱和时 CallerRuns 提供天然背压，避免任务堆积
+ * 线程池配置：
+ * - multiAgentExecutor：多 Agent 子任务专用，饱和时 CallerRuns 背压；
+ * - memoryExecutor：记忆写回后台任务专用（M9 摘要压缩等），饱和时记日志丢弃（fail-open），
+ *   绝不阻塞聊天请求线程。
  */
 @Configuration
 public class ExecutorConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(ExecutorConfig.class);
 
     @Bean("multiAgentExecutor")
     public ThreadPoolTaskExecutor multiAgentExecutor() {
@@ -28,5 +34,24 @@ public class ExecutorConfig {
         executor.setAwaitTerminationSeconds(30);
         return executor;
     }
-    
+
+    /**
+     * 记忆写回专用线程池（M9）：跑摘要压缩等低优先级后台任务。
+     * 队列饱和时丢弃并记警告（写回是尽力而为的增强链路，丢一轮不影响正确性），
+     * 与 CallerRuns 的区别：绝不反向阻塞请求线程。
+     */
+    @Bean("memoryExecutor")
+    public ThreadPoolTaskExecutor memoryExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(2);
+        executor.setQueueCapacity(64);
+        executor.setThreadNamePrefix("memory-");
+        executor.setDaemon(true);
+        executor.setRejectedExecutionHandler((r, pool) ->
+                log.warn("记忆写回任务队列已满，本次任务按 fail-open 丢弃"));
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(10);
+        return executor;
+    }
 }

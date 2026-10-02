@@ -23,8 +23,8 @@ public class InMemoryConversationMemory implements ConversationMemory{
      * 加载会话历史消息
      */
     @Override 
-    public List<ChatMessage> load(String sessionId, int maxMessages) {
-        ConcurrentLinkedDeque<ChatMessage> history = sessions.get(sessionId);
+    public List<ChatMessage> load(long userId, String sessionId, int maxMessages) {
+        ConcurrentLinkedDeque<ChatMessage> history = sessions.get(key(userId, sessionId));
         if (history == null) {
             return List.of();
         }  
@@ -40,9 +40,9 @@ public class InMemoryConversationMemory implements ConversationMemory{
      * 追加会话消息
      */
     @Override
-    public void append(String sessionId, ChatMessage message) {
+    public void append(long userId, String sessionId, ChatMessage message) {
         ConcurrentLinkedDeque<ChatMessage> history =
-                sessions.computeIfAbsent(sessionId, k -> new ConcurrentLinkedDeque<>());
+                sessions.computeIfAbsent(key(userId, sessionId), k -> new ConcurrentLinkedDeque<>());
         history.addLast(message);
     }
     
@@ -50,8 +50,12 @@ public class InMemoryConversationMemory implements ConversationMemory{
      * 清除会话历史消息
      */
     @Override
-    public void clear(String sessionId) {
-        sessions.remove(sessionId);
+    public void clear(long userId, String sessionId) {
+        sessions.remove(key(userId, sessionId));
+    }
+
+    private String key(long userId, String sessionId) {
+        return userId + ":" + sessionId;
     }
 
 }

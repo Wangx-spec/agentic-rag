@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -42,9 +43,10 @@ public class ChatController {
 
         String sessionId = (req.sessionId() == null || req.sessionId().isBlank()) ? "default" : req.sessionId();
         ChatMode mode = resolveMode(req);
+        long userId = req.userId() == null ? 0L : req.userId();
         CompletableFuture.runAsync(() -> {
             try {
-                chatService.chat(sessionId, req.message(), mode, sink);
+                chatService.chat(userId, sessionId, req.message(), mode, sink);
             } catch (IllegalArgumentException | IllegalStateException e) {
                 sink.onError(e.getMessage());
             } catch (Exception e) {
@@ -59,8 +61,9 @@ public class ChatController {
     }
 
     @DeleteMapping("/memory/{sessionId}")
-    public ResponseEntity<Void> clearMemory(@PathVariable String sessionId) {
-        chatService.clearMemory(sessionId);
+    public ResponseEntity<Void> clearMemory(@PathVariable String sessionId,
+                                            @RequestParam(required = false, defaultValue = "0") long userId) {
+        chatService.clearMemory(userId, sessionId);
         return ResponseEntity.noContent().build();
     }
 
@@ -77,6 +80,6 @@ public class ChatController {
         return ChatMode.AGENT;
     }
 
-    public record ChatRequest(String sessionId, String message, String mode, Boolean agent, Boolean kb) {
+    public record ChatRequest(String sessionId, Long userId, String message, String mode, Boolean agent, Boolean kb) {
     }
 }
