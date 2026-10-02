@@ -213,6 +213,11 @@ public class ChatService {
             public void onFinal(String message) {
                 sink.onThinking("✅ " + message);
             }
+
+            @Override
+            public void onTable(java.util.Map<String, Object> payload) {
+                sink.onTable(payload);
+            }
         };
         String finalAnswer = agentLoop.run(ctx, reporter);
         streamAnswer(sink, finalAnswer);

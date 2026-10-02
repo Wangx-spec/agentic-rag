@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agentic RAG</title>
+<!-- ECharts（T11 数据表格可视化；CDN 不可用时自动降级为纯表格展示） -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -118,6 +120,50 @@
   }
   .source-name { color: #d8deeb; font-weight: 600; }
   .source-snippet { font-size: 12px; line-height: 1.7; color: #aab0c0; white-space: pre-wrap; word-break: break-word; }
+  /* ===== 数据表格卡片 + 图表（T11 table 事件） ===== */
+  .table-panel {
+    display: none; flex-direction: column; gap: 10px; margin-top: 2px;
+    background: #161a22; border: 1px solid #2a2e39; border-radius: 10px; padding: 10px 12px;
+  }
+  .table-panel.open { display: flex; }
+  .table-card {
+    background: #11151c; border: 1px solid #23262f; border-radius: 8px;
+    padding: 10px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .table-card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  }
+  .table-sql {
+    font-size: 11px; color: #8a8f9c; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: #14161d; border: 1px solid #23262f; border-radius: 6px; padding: 3px 8px;
+    word-break: break-all; max-width: 100%;
+  }
+  .chart-toggle {
+    display: inline-flex; gap: 2px; background: #171b22; border: 1px solid #2a2e39;
+    border-radius: 8px; padding: 2px; flex-shrink: 0;
+  }
+  .chart-toggle button {
+    background: transparent; border: none; color: #8a8f9c; font-size: 11px;
+    padding: 3px 10px; border-radius: 6px; cursor: pointer;
+  }
+  .chart-toggle button.active { background: #24314e; color: #cdd5f5; }
+  .table-scroll {
+    max-height: 320px; overflow: auto; border: 1px solid #23262f; border-radius: 8px;
+  }
+  .data-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .data-table th {
+    position: sticky; top: 0; z-index: 1; background: #1c1f27; color: #cdd5f5;
+    font-weight: 600; padding: 6px 10px; text-align: left; white-space: nowrap;
+    border-bottom: 1px solid #2a2e39;
+  }
+  .data-table td {
+    padding: 5px 10px; color: #d8deeb; border-bottom: 1px solid #1a1d26; white-space: nowrap;
+  }
+  .data-table th.num, .data-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .table-empty { font-size: 12px; color: #8a8f9c; padding: 10px; text-align: center; }
+  .chart-box { display: none; width: 100%; height: 300px; }
+  .table-trunc { font-size: 11px; color: #f0c96a; }
   .stream-block.live .thinking-content,
   .stream-block.live .answer-content { animation: blockGlow 1.8s ease-in-out infinite; }
   .stream-block.live .thinking-content::after,
@@ -406,6 +452,9 @@ function createAssistantStream() {
   thinkingBlock.appendChild(thinkingLabel);
   thinkingBlock.appendChild(thinkingContent);
 
+  const tablePanel = document.createElement('div');
+  tablePanel.className = 'table-panel';
+
   const answerBlock = document.createElement('div');
   answerBlock.className = 'stream-block stream-answer';
   const answerLabel = document.createElement('div');
@@ -427,6 +476,7 @@ function createAssistantStream() {
   sourcePanel.appendChild(sourceList);
 
   bubble.appendChild(thinkingBlock);
+  bubble.appendChild(tablePanel);
   bubble.appendChild(answerBlock);
   bubble.appendChild(sourcePanel);
   row.appendChild(bubble);
@@ -436,6 +486,7 @@ function createAssistantStream() {
     thinkingBlock,
     thinkingLabel,
     thinkingContent,
+    tablePanel,
     answerBlock,
     answerLabel,
     answerContent,
@@ -543,6 +594,14 @@ async function send() {
           view.answerBlock.classList.add('open');
           view.answerContent.innerHTML = renderAssistantAnswer(answer);
           messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
+        } else if (evt.event === 'table') {
+          let payload = null;
+          try { payload = JSON.parse(evt.data); } catch (e) {}
+          if (!payload || !Array.isArray(payload.columns)) continue;
+          const view = ensureStreamView();
+          view.tablePanel.classList.add('open');
+          appendTableCard(view, payload);
+          messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
         } else if (evt.event === 'done') {
           const view = ensureStreamView();
           try {
@@ -608,6 +667,174 @@ function renderSources(view, sources) {
     view.sourceList.appendChild(item);
   }
   view.sourcePanel.classList.add('open');
+}
+
+/* ===== 数据表格卡片 + ECharts 图表（T11 table 事件） ===== */
+function isNumericValue(v) {
+  if (v === null || v === undefined || v === '') return false;
+  if (typeof v === 'number') return Number.isFinite(v);
+  return /^-?\d+(\.\d+)?$/.test(String(v).trim());
+}
+
+/** 首列固定作 X 轴，从第 2 列起找“非空值全为数值”的列作为 Y 轴。 */
+function numericColumnIndexes(columns, rows) {
+  const idxs = [];
+  for (let c = 1; c < columns.length; c++) {
+    let hasValue = false;
+    let allNumeric = true;
+    for (const r of rows) {
+      const v = r ? r[c] : null;
+      if (v === null || v === undefined || v === '') continue;
+      hasValue = true;
+      if (!isNumericValue(v)) { allNumeric = false; break; }
+    }
+    if (hasValue && allNumeric) idxs.push(c);
+  }
+  return idxs;
+}
+
+function appendTableCard(view, payload) {
+  const columns = payload.columns || [];
+  const rows = payload.rows || [];
+  const numericCols = numericColumnIndexes(columns, rows);
+  const numericSet = new Set(numericCols);
+
+  const card = document.createElement('div');
+  card.className = 'table-card';
+
+  const head = document.createElement('div');
+  head.className = 'table-card-head';
+  if (payload.sql) {
+    const sqlEl = document.createElement('code');
+    sqlEl.className = 'table-sql';
+    sqlEl.textContent = payload.sql;
+    sqlEl.title = payload.sql;
+    head.appendChild(sqlEl);
+  }
+
+  const scroll = document.createElement('div');
+  scroll.className = 'table-scroll';
+  const table = document.createElement('table');
+  table.className = 'data-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  columns.forEach((col, i) => {
+    const th = document.createElement('th');
+    if (numericSet.has(i)) th.classList.add('num');
+    th.textContent = col;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  if (rows.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = Math.max(columns.length, 1);
+    td.className = 'table-empty';
+    td.textContent = '无数据';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  } else {
+    for (const row of rows) {
+      const tr = document.createElement('tr');
+      for (let i = 0; i < columns.length; i++) {
+        const td = document.createElement('td');
+        if (numericSet.has(i)) td.classList.add('num');
+        const v = row ? row[i] : null;
+        td.textContent = v === null || v === undefined ? '' : String(v);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+
+  card.appendChild(head);
+  card.appendChild(scroll);
+
+  // 有数值列且 ECharts 可用时，才提供「表格/柱状图/趋势图」切换（否则纯表格展示）
+  if (numericCols.length > 0 && window.echarts) {
+    const chartBox = document.createElement('div');
+    chartBox.className = 'chart-box';
+    const toggle = document.createElement('div');
+    toggle.className = 'chart-toggle';
+    const buttons = {};
+    let currentMode = 'table';
+    for (const m of [
+      { key: 'table', label: '表格' },
+      { key: 'bar', label: '柱状图' },
+      { key: 'line', label: '趋势图' }
+    ]) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = m.label;
+      if (m.key === currentMode) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        currentMode = m.key;
+        for (const k in buttons) buttons[k].classList.toggle('active', k === currentMode);
+        scroll.style.display = currentMode === 'table' ? '' : 'none';
+        chartBox.style.display = currentMode === 'table' ? 'none' : 'block';
+        if (currentMode !== 'table') renderDataChart(chartBox, columns, rows, numericCols, currentMode);
+      });
+      buttons[m.key] = btn;
+      toggle.appendChild(btn);
+    }
+    head.appendChild(toggle);
+    card.appendChild(chartBox);
+  }
+
+  if (payload.truncated) {
+    const trunc = document.createElement('div');
+    trunc.className = 'table-trunc';
+    trunc.textContent = '结果超过行数上限已被截断，仅展示前 ' + rows.length + ' 行';
+    card.appendChild(trunc);
+  }
+
+  view.tablePanel.appendChild(card);
+}
+
+function renderDataChart(chartBox, columns, rows, numericCols, mode) {
+  let chart = chartBox._chart;
+  if (!chart) {
+    chart = echarts.init(chartBox);
+    chartBox._chart = chart;
+  }
+  const label = v => {
+    const s = String(v === null || v === undefined ? '' : v);
+    return s.length > 12 ? s.slice(0, 12) + '…' : s;
+  };
+  const xData = rows.map(r => label(r ? r[0] : ''));
+  const series = numericCols.map(c => ({
+    name: columns[c],
+    type: mode === 'bar' ? 'bar' : 'line',
+    smooth: true,
+    data: rows.map(r => {
+      const v = r ? r[c] : null;
+      return isNumericValue(v) ? Number(v) : null;
+    })
+  }));
+  chart.setOption({
+    backgroundColor: 'transparent',
+    color: ['#4f6ef7', '#5fd9a4', '#f0c96a', '#ff9b9b', '#b48ef7', '#6fd9e0'],
+    tooltip: { trigger: 'axis' },
+    legend: { show: series.length > 1, top: 0, textStyle: { color: '#aab0c0' } },
+    grid: { left: 56, right: 24, top: series.length > 1 ? 40 : 24, bottom: 40 },
+    xAxis: {
+      type: 'category',
+      data: xData,
+      axisLabel: { color: '#8a8f9c', interval: 0, rotate: xData.length > 8 ? 30 : 0 },
+      axisLine: { lineStyle: { color: '#3a4052' } }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: '#8a8f9c' },
+      splitLine: { lineStyle: { color: '#23262f' } }
+    },
+    series
+  }, true);
+  chart.resize();
 }
 
 /* ===== 文档管理 ===== */

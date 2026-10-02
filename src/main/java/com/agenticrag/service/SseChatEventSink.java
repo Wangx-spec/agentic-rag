@@ -35,6 +35,11 @@ public class SseChatEventSink implements ChatEventSink {
         send("error", Map.of("message", message));
     }
 
+    @Override
+    public void onTable(Map<String, Object> payload) {
+        send("table", payload);
+    }
+
     private List<Map<String, Object>> buildSourcesPayload(List<RetrievedChunk> retrieved) {
         if (retrieved == null || retrieved.isEmpty()) {
             return List.of();

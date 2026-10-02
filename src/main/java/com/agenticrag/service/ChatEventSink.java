@@ -3,6 +3,7 @@ package com.agenticrag.service;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
 
 import java.util.List;
+import java.util.Map;
 
 public interface ChatEventSink {
 
@@ -16,5 +17,9 @@ public interface ChatEventSink {
     }
 
     default void onError(String message) {
+    }
+
+    /** S3.1：结构化表格结果（columns/rows/sql/truncated），前端渲染表格与图表。 */
+    default void onTable(Map<String, Object> payload) {
     }
 }

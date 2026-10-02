@@ -81,6 +81,10 @@ public class AgentLoop {
             reporter.onActing(toolCall.name(), toolCall.argumentsJson());
 
             String result = executeTool(ctx, toolCall);
+            for (java.util.Map<String, Object> tablePayload :
+                    com.agenticrag.tool.tools.RunSqlTool.drainTableEvents()) {
+                reporter.onTable(tablePayload);
+            }
             ctx.recordState(AgentState.OBSERVING);
             reporter.onObserving(summarizeResult(result));
 

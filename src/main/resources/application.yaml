@@ -44,6 +44,14 @@ rag:
   embedding-dim: ${RAG_EMBEDDING_DIM:4096}
   data-dir: ${RAG_DATA_DIR:./data}
   min-chunk-size: 80
+  # S3.1 数据分析：demo 只读库（仅本地开发启用，生产不配；enabled=false 时工具与数据源均不装配）
+  data:
+    enabled: ${RAG_DATA_ENABLED:false}
+    url: ${RAG_DATA_URL:jdbc:postgresql://localhost:5432/agentic_rag_demo}
+    username: ${RAG_DATA_USERNAME:demo_readonly}
+    password: ${RAG_DATA_PASSWORD:demo_readonly}
+    query-timeout-seconds: ${RAG_DATA_QUERY_TIMEOUT_SECONDS:10}
+    max-rows: ${RAG_DATA_MAX_ROWS:500}
   memory:
     type: ${RAG_MEMORY_TYPE:memory}
   intent:
