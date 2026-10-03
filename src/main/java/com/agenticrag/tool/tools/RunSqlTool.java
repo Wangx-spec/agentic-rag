@@ -30,6 +30,9 @@ import java.util.Map;
 public class RunSqlTool implements Tool {
 
     private static final String NAME = "run_sql";
+
+    public static final String HARD_FAILURE_PREFIX = "[HARD_FAILURE]";
+
     private static final String SCHEMA = """
             {
               "type": "object",
@@ -83,7 +86,7 @@ public class RunSqlTool implements Tool {
         try {
             sqlSafetyGuard.validate(sql);
         } catch (SqlSafetyException e) {
-            return "查询被拒绝：" + e.getMessage();
+            return HARD_FAILURE_PREFIX + "查询被拒绝：" + e.getMessage();
         }
 
         try {
@@ -97,10 +100,10 @@ public class RunSqlTool implements Tool {
             return result.toMarkdown();
         } catch (DataAccessException e) {
             log.warn("demo 库查询失败: {}", e.getMessage());
-            return "查询执行失败：SQL 有误或数据不可用（请检查语法与表/字段名）。";
+            return HARD_FAILURE_PREFIX + "查询执行失败：SQL 有误或数据不可用（请检查语法与表/字段名）。";
         } catch (Exception e) {
             log.warn("demo 库查询出现未预期异常", e);
-            return "查询执行失败，请稍后重试。";
+            return HARD_FAILURE_PREFIX + "查询执行失败，请稍后重试。";
         }
     }
 

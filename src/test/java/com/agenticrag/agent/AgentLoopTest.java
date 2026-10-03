@@ -2,6 +2,9 @@ package com.agenticrag.agent;
 
 import com.agenticrag.config.LlmProperties;
 import com.agenticrag.config.RagProperties;
+import com.agenticrag.dataanalysis.DataAnalysisProperties;
+import com.agenticrag.dataanalysis.SqlSafetyGuard;
+import com.agenticrag.dataanalysis.dto.QueryResult;
 import com.agenticrag.llm.LlmClient;
 import com.agenticrag.llm.dto.ChatMessage;
 import com.agenticrag.llm.dto.LlmResponse;
@@ -10,22 +13,33 @@ import com.agenticrag.rag.retrieve.RetrievedChunk;
 import com.agenticrag.tool.Tool;
 import com.agenticrag.tool.ToolRegistry;
 import com.agenticrag.tool.ToolSchemaValidator;
+import com.agenticrag.tool.tools.RunSqlTool;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementCallback;
 
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -465,5 +479,92 @@ class AgentLoopTest {
         // 精排顺序：chunkId 12,11,10,...,5（index 11 → chunkId 12）
         assertEquals(12L, ctx.getSources().get(0).chunkId());
         assertEquals(5L, ctx.getSources().get(7).chunkId());
+    }
+
+    // ==================== SQL 硬失败短路测试 ====================
+
+    @Test
+    void sqlHardFailureShortCircuitsLoop() {
+        Tool failingSqlTool = new Tool() {
+            @Override
+            public String name() { return "run_sql"; }
+            @Override
+            public String description() { return "执行只读 SQL 查询"; }
+            @Override
+            public String parametersSchema() {
+                return "{\"type\":\"object\",\"properties\":{\"sql\":{\"type\":\"string\"}},\"required\":[\"sql\"]}";
+            }
+            @Override
+            public String execute(Map<String, Object> args) {
+                return RunSqlTool.HARD_FAILURE_PREFIX + "查询执行失败：SQL 有误或数据不可用（请检查语法与表/字段名）。";
+            }
+        };
+
+        when(toolRegistry.find("run_sql")).thenReturn(Optional.of(failingSqlTool));
+        when(llmClient.chatWithTools(anyList(), anyList()))
+                .thenReturn(new LlmResponse("", List.of(
+                        new ToolCall("call_1", "run_sql", "{\"sql\":\"SELECT * FROM missing_table\"}")
+                )));
+
+        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
+        AgentContext ctx = new AgentContext(
+                List.of(ChatMessage.user("查一下订单总量")),
+                List.of(),
+                5
+        );
+
+        String result = loop.run(ctx, reporter);
+
+        assertEquals("查询执行失败：SQL 有误或数据不可用（请检查语法与表/字段名）。", result);
+        verify(llmClient, times(1)).chatWithTools(anyList(), anyList());
+        assertEquals(
+                List.of("THINKING", "ACTING", "OBSERVING", "FINAL"),
+                ctx.getStateTrajectory()
+        );
+        assertEquals("查询执行失败：SQL 有误或数据不可用（请检查语法与表/字段名）。",
+                ctx.getMessages().get(ctx.getMessages().size() - 1).content());
+        verify(reporter).onFinal("SQL 查询失败，终止循环");
+    }
+
+    // ==================== ThreadLocal 兜底清理测试 ====================
+
+    private void seedStaleTableEvent() throws Exception {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        PreparedStatement ps = mock(PreparedStatement.class);
+        ResultSet rs = mock(ResultSet.class);
+        ResultSetMetaData meta = mock(ResultSetMetaData.class);
+        when(ps.executeQuery()).thenReturn(rs);
+        when(rs.getMetaData()).thenReturn(meta);
+        when(meta.getColumnCount()).thenReturn(1);
+        when(meta.getColumnLabel(1)).thenReturn("cnt");
+        when(rs.next()).thenReturn(true, false);
+        when(rs.getObject(1)).thenReturn(7L);
+        when(jdbc.<QueryResult>execute(anyString(),
+                ArgumentMatchers.<PreparedStatementCallback<QueryResult>>any()))
+                .thenAnswer(inv -> inv.getArgument(1, PreparedStatementCallback.class).doInPreparedStatement(ps));
+
+        DataAnalysisProperties dataProps = new DataAnalysisProperties();
+        dataProps.setMaxRows(10);
+        dataProps.setQueryTimeoutSeconds(5);
+        new RunSqlTool(jdbc, new SqlSafetyGuard(), dataProps, toolRegistry)
+                .execute(Map.of("sql", "SELECT COUNT(*) FROM orders"));
+    }
+
+    @Test
+    void clearsStaleTableEventsWhenLlmCallThrows() throws Exception {
+        seedStaleTableEvent();
+
+        when(llmClient.chatWithTools(anyList(), anyList()))
+                .thenThrow(new RuntimeException("LLM 服务不可用"));
+
+        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
+        AgentContext ctx = new AgentContext(
+                List.of(ChatMessage.user("查一下订单总量")),
+                List.of(),
+                5
+        );
+
+        assertThrows(RuntimeException.class, () -> loop.run(ctx, reporter));
+        assertTrue(RunSqlTool.drainTableEvents().isEmpty());
     }
 }

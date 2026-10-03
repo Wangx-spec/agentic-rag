@@ -59,6 +59,14 @@ public class AgentLoop {
      * @return 最终回答
      */
     public String run(AgentContext ctx, StepReporter reporter) {
+        try {
+            return doRun(ctx, reporter);
+        } finally {
+            com.agenticrag.tool.tools.RunSqlTool.clearTableEvents();
+        }
+    }
+
+    private String doRun(AgentContext ctx, StepReporter reporter) {
 
         while (!ctx.isMaxRoundsReached()) {
             List<ToolSchema> tools = ctx.getCurrentRound() == ctx.getMaxRounds() - 1 ? List.of() : ctx.getAvailableTools();
@@ -85,11 +93,22 @@ public class AgentLoop {
                     com.agenticrag.tool.tools.RunSqlTool.drainTableEvents()) {
                 reporter.onTable(tablePayload);
             }
+            boolean hardFailure = result != null
+                    && result.startsWith(com.agenticrag.tool.tools.RunSqlTool.HARD_FAILURE_PREFIX);
+            String observation = hardFailure
+                    ? result.substring(com.agenticrag.tool.tools.RunSqlTool.HARD_FAILURE_PREFIX.length())
+                    : result;
+
             ctx.recordState(AgentState.OBSERVING);
-            reporter.onObserving(summarizeResult(result));
+            reporter.onObserving(summarizeResult(observation));
 
             ctx.addMessage(ChatMessage.assistantWithToolCalls(response.content(), List.of(toolCall)));
-            ctx.addMessage(ChatMessage.tool(toolCall.id(), result));
+            ctx.addMessage(ChatMessage.tool(toolCall.id(), observation));
+            if (hardFailure) {
+                ctx.recordState(AgentState.FINAL);
+                reporter.onFinal("SQL 查询失败，终止循环");
+                return observation;
+            }
             ctx.incrementRound();
         }
         ctx.recordState(AgentState.FINAL);

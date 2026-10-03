@@ -107,6 +107,7 @@ class RunSqlToolTest {
     void rejectsMissingSqlArgument() {
         assertTrue(tool.execute(Map.of()).contains("缺少 sql 参数"));
         assertTrue(tool.execute(null).contains("缺少 sql 参数"));
+        assertFalse(tool.execute(Map.of()).startsWith(RunSqlTool.HARD_FAILURE_PREFIX));
         assertTrue(RunSqlTool.drainTableEvents().isEmpty());
     }
 
@@ -114,6 +115,7 @@ class RunSqlToolTest {
     void rejectsUnsafeSqlBeforeTouchingDatabase() {
         String result = tool.execute(Map.of("sql", "DELETE FROM orders"));
 
+        assertTrue(result.startsWith(RunSqlTool.HARD_FAILURE_PREFIX));
         assertTrue(result.contains("查询被拒绝"));
         verifyNoInteractions(demoJdbcTemplate);
         assertTrue(RunSqlTool.drainTableEvents().isEmpty());
@@ -200,9 +202,23 @@ class RunSqlToolTest {
 
         String result = tool.execute(Map.of("sql", "SELECT * FROM orders"));
 
+        assertTrue(result.startsWith(RunSqlTool.HARD_FAILURE_PREFIX));
         assertTrue(result.contains("查询执行失败"));
         // 脱敏：不向 LLM 暴露底层连接信息
         assertFalse(result.contains("secret-host"));
+        assertTrue(RunSqlTool.drainTableEvents().isEmpty());
+    }
+
+    @Test
+    void returnsHardFailureOnUnexpectedException() {
+        when(demoJdbcTemplate.<QueryResult>execute(anyString(),
+                ArgumentMatchers.<PreparedStatementCallback<QueryResult>>any()))
+                .thenThrow(new RuntimeException("boom"));
+
+        String result = tool.execute(Map.of("sql", "SELECT * FROM orders"));
+
+        assertTrue(result.startsWith(RunSqlTool.HARD_FAILURE_PREFIX));
+        assertTrue(result.contains("查询执行失败，请稍后重试"));
         assertTrue(RunSqlTool.drainTableEvents().isEmpty());
     }
 }
