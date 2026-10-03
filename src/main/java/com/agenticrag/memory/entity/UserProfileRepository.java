@@ -1,6 +1,7 @@
 package com.agenticrag.memory.entity;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Repository;
@@ -15,6 +16,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class UserProfileRepository {
 
+    @Qualifier("jdbcTemplate")
     private final JdbcTemplate jdbcTemplate;
 
     public Optional<String> load(long userId) {

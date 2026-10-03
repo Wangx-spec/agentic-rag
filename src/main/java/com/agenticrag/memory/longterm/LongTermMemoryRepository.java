@@ -1,6 +1,7 @@
 package com.agenticrag.memory.longterm;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -18,6 +19,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class LongTermMemoryRepository {
 
+    @Qualifier("jdbcTemplate")
     private final JdbcTemplate jdbcTemplate;
 
     public record MemoryEntry(long id, String content, String sourceSessionId, Timestamp createdAt) {

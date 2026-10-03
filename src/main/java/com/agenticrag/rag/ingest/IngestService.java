@@ -9,6 +9,7 @@ import com.agenticrag.rag.index.VectorStore;
 import com.agenticrag.rag.storage.StorageClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -35,7 +36,7 @@ public class IngestService {
     private final VectorStore vectorStore;
     private final Bm25Store bm25Store;
 
-    public IngestService(JdbcTemplate jdbcTemplate,
+    public IngestService(@Qualifier("jdbcTemplate") JdbcTemplate jdbcTemplate,
                          DocumentRepository documentRepository,
                          DocumentParserSelector parserSelector,
                          Chunker chunker,

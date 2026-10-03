@@ -3,6 +3,7 @@ package com.agenticrag.memory;
 import com.agenticrag.llm.dto.ChatMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -35,6 +36,7 @@ public class JdbcConversationMemory implements ConversationMemory {
     private static final String CLEAR_SQL =
             "DELETE FROM conversation_messages WHERE user_id = ? AND session_id = ?";
 
+    @Qualifier("jdbcTemplate")
     private final JdbcTemplate jdbcTemplate;
 
     @Override

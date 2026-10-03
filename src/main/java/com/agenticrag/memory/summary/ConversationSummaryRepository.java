@@ -1,6 +1,7 @@
 package com.agenticrag.memory.summary;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -15,6 +16,7 @@ import java.util.Optional;
 @Repository
 @RequiredArgsConstructor
 public class ConversationSummaryRepository {
+    @Qualifier("jdbcTemplate")
     private final JdbcTemplate jdbcTemplate;
 
     public record SummaryRow(String content, long lastMessageId) {

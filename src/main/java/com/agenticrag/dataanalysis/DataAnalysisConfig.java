@@ -20,10 +20,12 @@ import javax.sql.DataSource;
  * <p>关键约束（多数据源 @Primary 隔离）：本类一旦定义任何 {@link DataSource} 类型 bean，
  * Spring Boot 的 {@code DataSourceAutoConfiguration} / {@code JdbcTemplateAutoConfiguration}
  * 会因 {@code @ConditionalOnMissingBean}（按类型匹配）而退让，不再创建主数据源与主 JdbcTemplate。
- * 因此必须在本类显式声明 {@code @Primary} 主数据源与主 JdbcTemplate，确保：
+ * 因此必须在本类显式声明 {@code @Primary} 主数据源与主 JdbcTemplate。主库 bean 名刻意沿用
+ * 自动配置的 {@code dataSource} / {@code jdbcTemplate}，使 RAG/Memory Repository 无论
+ * {@code rag.data.enabled} 开关，都能通过 {@code @Qualifier("jdbcTemplate")} 命中主库：
  * <ul>
- *   <li>裸注入 {@link JdbcTemplate} 的 RAG/Memory Repository（JdbcConversationMemory、
- *       UserProfileRepository、DocumentRepository、IngestService 等）仍连主库；</li>
+ *   <li>RAG/Memory Repository（JdbcConversationMemory、UserProfileRepository、
+ *       DocumentRepository、IngestService 等）显式 {@code @Qualifier("jdbcTemplate")} 连主库；</li>
  *   <li>{@code spring.sql.init} 的 {@code @ConditionalOnSingleCandidate(DataSource.class)} 命中
  *       {@code @Primary} 主数据源，初始化脚本只作用于主库；</li>
  *   <li>数据分析工具（RunSqlTool / ListTablesTool）通过 {@code @Qualifier("demoJdbcTemplate")} 连 demo 库。</li>
@@ -35,11 +37,12 @@ import javax.sql.DataSource;
 @ConditionalOnProperty(prefix = "rag.data", name = "enabled", havingValue = "true")
 public class DataAnalysisConfig {
 
-    /** 主数据源（@Primary）：RAG/Memory Repository 裸注入 JdbcTemplate 时走这里，始终指向主库。
-     *  用 DataSourceProperties.initializeDataSourceBuilder()（自动配置同款），正确完成 url→jdbcUrl 映射 */
+    /** 主数据源（@Primary）：RAG/Memory Repository 通过 @Qualifier("dataSource") 走这里，始终指向主库。
+     *  用 DataSourceProperties.initializeDataSourceBuilder()（自动配置同款），正确完成 url→jdbcUrl 映射。
+     *  bean 名沿用自动配置的 dataSource，保证 enabled=false（自动配置接管）与 enabled=true（本类接管）名字一致。 */
     @Primary
-    @Bean(name = "primaryDataSource")
-    public DataSource primaryDataSource(DataSourceProperties properties) {
+    @Bean(name = "dataSource")
+    public DataSource dataSource(DataSourceProperties properties) {
         return properties.initializeDataSourceBuilder().build();
     }
 
@@ -54,11 +57,12 @@ public class DataAnalysisConfig {
         return dataSource;
     }
 
-    /** 主 JdbcTemplate（@Primary）：裸注入点拿到主库 */
+    /** 主 JdbcTemplate（@Primary）：RAG/Memory Repository 通过 @Qualifier("jdbcTemplate") 显式注入主库。
+     *  bean 名沿用自动配置的 jdbcTemplate，保证 enabled 开关两态下名字一致。 */
     @Primary
-    @Bean(name = "primaryJdbcTemplate")
-    public JdbcTemplate primaryJdbcTemplate(@Qualifier("primaryDataSource") DataSource primaryDataSource) {
-        return new JdbcTemplate(primaryDataSource);
+    @Bean(name = "jdbcTemplate")
+    public JdbcTemplate jdbcTemplate(@Qualifier("dataSource") DataSource dataSource) {
+        return new JdbcTemplate(dataSource);
     }
 
     /** demo JdbcTemplate：RunSqlTool / ListTablesTool 通过 @Qualifier("demoJdbcTemplate") 注入 */

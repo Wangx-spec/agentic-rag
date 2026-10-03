@@ -3,6 +3,7 @@ package com.agenticrag.rag.ingest;
 import com.agenticrag.rag.dto.Chunk;
 import com.agenticrag.rag.dto.Document;
 import com.agenticrag.rag.dto.DocumentStatus;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -28,7 +29,7 @@ public class DocumentRepository {
             rs.getTimestamp("created_at").toInstant()
     );
 
-    public DocumentRepository(JdbcTemplate jdbcTemplate) {
+    public DocumentRepository(@Qualifier("jdbcTemplate") JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 

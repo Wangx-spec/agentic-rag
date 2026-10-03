@@ -41,9 +41,9 @@ class DataAnalysisConfigTest {
             .withUserConfiguration(DataAnalysisConfig.class);
 
     @Test
-    void enabledTrue_primaryDataSourcePointsToMainDb() {
+    void enabledTrue_mainDataSourcePointsToMainDb() {
         enabledRunner.run(context -> {
-            HikariDataSource primary = (HikariDataSource) context.getBean("primaryDataSource");
+            HikariDataSource primary = (HikariDataSource) context.getBean("dataSource");
             assertThat(primary.getJdbcUrl()).isEqualTo(MAIN_URL);
         });
     }
@@ -57,15 +57,15 @@ class DataAnalysisConfigTest {
     }
 
     @Test
-    void enabledTrue_bareJdbcTemplateInjectionResolvesToPrimaryNotDemo() {
+    void enabledTrue_bareJdbcTemplateInjectionResolvesToMainNotDemo() {
         enabledRunner.run(context -> {
-            JdbcTemplate primary = context.getBean("primaryJdbcTemplate", JdbcTemplate.class);
+            JdbcTemplate main = context.getBean("jdbcTemplate", JdbcTemplate.class);
             JdbcTemplate demo = context.getBean("demoJdbcTemplate", JdbcTemplate.class);
-            assertThat(primary).isNotSameAs(demo);
+            assertThat(main).isNotSameAs(demo);
 
-            // 裸注入（RAG/Memory Repository 的注入方式）必须拿到主库 JdbcTemplate
+            // 裸注入（未加 @Qualifier 时）必须拿到主库 JdbcTemplate（@Primary 兜底）
             JdbcTemplate injected = context.getBean(JdbcTemplate.class);
-            assertThat(injected).isSameAs(primary);
+            assertThat(injected).isSameAs(main);
             assertThat(injected).isNotSameAs(demo);
         });
     }
@@ -83,10 +83,12 @@ class DataAnalysisConfigTest {
                         "rag.data.enabled=false")
                 .withUserConfiguration(DataAnalysisConfig.class)
                 .run(context -> {
+                    // demo 数据源相关 bean 完全不装配
                     assertThat(context).doesNotHaveBean("demoDataSource");
                     assertThat(context).doesNotHaveBean("demoJdbcTemplate");
-                    assertThat(context).doesNotHaveBean("primaryDataSource");
-                    assertThat(context).doesNotHaveBean("primaryJdbcTemplate");
+                    // 主库数据源由 Spring Boot 自动配置提供（bean 名 dataSource），仅此一个 DataSource
+                    assertThat(context).hasSingleBean(DataSource.class);
+                    assertThat(context).hasBean("dataSource");
                 });
     }
 }
