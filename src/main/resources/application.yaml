@@ -41,6 +41,21 @@ rag:
     document-max-chars: ${RAG_AGENT_DOCUMENT_MAX_CHARS:8000}   # get_document 正文截断上限（字符数）
     list-documents-limit: ${RAG_AGENT_LIST_DOCUMENTS_LIMIT:20} # list_documents 默认/最大返回篇数
     document-tools-enabled: ${RAG_AGENT_DOCUMENT_TOOLS_ENABLED:true} # get_document/list_documents 注册开关（false=回退 r07d 评测口径）
+    routing:
+      enabled: ${RAG_AGENT_ROUTING_ENABLED:true} # S3.2：按意图过滤 Agent 当次可见工具
+      include-mcp-tools: ${RAG_AGENT_INCLUDE_MCP_TOOLS:true}
+    planning:
+      enabled: ${RAG_AGENT_PLANNING_ENABLED:true} # S3.2：子问题规划块注入
+    critic:
+      enabled: ${RAG_AGENT_CRITIC_ENABLED:true} # S3.2：最终回答前证据自检
+      max-retries: ${RAG_AGENT_CRITIC_MAX_RETRIES:1}
+    budget:
+      enabled: ${RAG_AGENT_BUDGET_ENABLED:true} # S3.2：工具输出截断与资源上限
+      max-tool-calls-per-session: ${RAG_AGENT_BUDGET_MAX_TOOL_CALLS_PER_SESSION:12}
+      max-total-tokens: ${RAG_AGENT_BUDGET_MAX_TOTAL_TOKENS:60000}
+      sql-max-rows: ${RAG_AGENT_BUDGET_SQL_MAX_ROWS:200}
+      sql-max-chars: ${RAG_AGENT_BUDGET_SQL_MAX_CHARS:8000}
+      retrieval-max-chars: ${RAG_AGENT_BUDGET_RETRIEVAL_MAX_CHARS:6000}
   embedding-dim: ${RAG_EMBEDDING_DIM:4096}
   data-dir: ${RAG_DATA_DIR:./data}
   min-chunk-size: 80

@@ -12,12 +12,14 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import com.agenticrag.tool.Tool;
+import com.agenticrag.tool.ToolDomain;
 import com.agenticrag.tool.ToolRegistry;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 只读 SQL 查询工具（F3/F4）：SqlSafetyGuard 校验 → demo 库执行（超时 + 行数上限）
@@ -73,6 +75,11 @@ public class RunSqlTool implements Tool {
     @Override
     public String parametersSchema() {
         return SCHEMA;
+    }
+
+    @Override
+    public Set<ToolDomain> domains() {
+        return Set.of(ToolDomain.SQL);
     }
 
     @Override

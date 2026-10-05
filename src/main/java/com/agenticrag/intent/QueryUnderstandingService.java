@@ -24,16 +24,17 @@ public class QueryUnderstandingService {
     private static final String SYSTEM_PROMPT = """
             你是知识库 Agent 的查询理解助手。请判断用户问题的意图，并生成给检索工具使用的规范查询。
 
-            意图只能是以下五类之一：
+            意图只能是以下六类之一：
             - CHAT：日常闲聊、打招呼、问候、情感交流，不需要知识库或工具
             - KB_QA：需要查询知识库文档才能回答的问题，涉及领域知识、文档内容或技术细节
             - MULTI_TASK：包含多个彼此独立、可分别作答的子问题，需要拆解后汇总
-            - TOOL_TASK：需要调用工具完成的任务，如数学计算、数据查询或 API 调用
+            - TOOL_TASK：需要调用工具完成的任务，如数学计算或 API 调用
+            - DATA_ANALYSIS：需要查询数据库、统计分析、销售/订单/用户/商品/评论等结构化或混合数据分析的问题
             - OFF_TOPIC：明显偏离主题、无意义、恶意或无法处理的输入
 
             normalized_query 是给知识库检索工具的建议：保留用户原意，补全术语、展开缩写，使用检索友好的表达，
             不超过原问题长度的 1.5 倍，不要改变用户真正要问的事情。
-            仅 MULTI_TASK 需要输出 sub_queries，每个元素是一条可独立检索的子问题；其他意图输出空数组。
+            MULTI_TASK 与 DATA_ANALYSIS 在包含多个可独立回答子问题时输出 sub_queries，每个元素是一条可独立处理的子问题；其他意图输出空数组。
             只返回 JSON，不要输出 Markdown 或解释文字，格式：
             {"intent":"KB_QA","confidence":0.9,"normalized_query":"检索建议","sub_queries":[]}
             """;

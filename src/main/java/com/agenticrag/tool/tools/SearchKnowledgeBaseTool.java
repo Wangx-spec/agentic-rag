@@ -3,6 +3,7 @@ package com.agenticrag.tool.tools;
 import com.agenticrag.rag.retrieve.HybridRetriever;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
 import com.agenticrag.tool.Tool;
+import com.agenticrag.tool.ToolDomain;
 import com.agenticrag.tool.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -49,6 +51,11 @@ public class SearchKnowledgeBaseTool implements Tool {
     @Override
     public String parametersSchema() {
         return SCHEMA;
+    }
+
+    @Override
+    public Set<ToolDomain> domains() {
+        return Set.of(ToolDomain.RETRIEVAL);
     }
 
     /**

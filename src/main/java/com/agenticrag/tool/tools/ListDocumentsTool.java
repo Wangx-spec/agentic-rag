@@ -6,6 +6,7 @@ import com.agenticrag.rag.dto.Document;
 import com.agenticrag.rag.dto.DocumentStatus;
 import com.agenticrag.rag.ingest.DocumentRepository;
 import com.agenticrag.tool.Tool;
+import com.agenticrag.tool.ToolDomain;
 import com.agenticrag.tool.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 限量列出知识库中已入库完成的文档（ID/标题/摘要/片段数）。
@@ -68,6 +70,11 @@ public class ListDocumentsTool implements Tool {
     @Override
     public String parametersSchema() {
         return SCHEMA;
+    }
+
+    @Override
+    public Set<ToolDomain> domains() {
+        return Set.of(ToolDomain.DOCUMENT);
     }
 
     @Override

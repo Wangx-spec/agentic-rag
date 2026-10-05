@@ -5,6 +5,7 @@ public enum Intent {
     KB_QA,
     MULTI_TASK,
     TOOL_TASK,
+    DATA_ANALYSIS,
     OFF_TOPIC,
     UNKNOWN
 }

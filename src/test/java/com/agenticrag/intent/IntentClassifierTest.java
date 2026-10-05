@@ -50,6 +50,13 @@ class IntentClassifierTest {
     }
 
     @Test
+    void classifyReturnsDataAnalysisForSalesQuestion() {
+        classifier.nextResponse = "{\"intent\": \"DATA_ANALYSIS\", \"confidence\": 0.93}";
+        IntentClassifier.IntentResult result = classifier.classify("各品类销售额排名是多少？");
+        assertEquals(Intent.DATA_ANALYSIS, result.intent());
+    }
+
+    @Test
     void classifyReturnsMultiTaskForCompoundQuestion() {
         classifier.nextResponse = "{\"intent\": \"MULTI_TASK\", \"confidence\": 0.93}";
         IntentClassifier.IntentResult result = classifier.classify("A 是什么？A 和 B 有什么区别？");

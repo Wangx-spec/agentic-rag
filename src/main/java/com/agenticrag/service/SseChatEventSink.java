@@ -1,5 +1,6 @@
 package com.agenticrag.service;
 
+import com.agenticrag.agent.EvidenceRegistry;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -45,6 +46,19 @@ public class SseChatEventSink implements ChatEventSink {
     @Override
     public void onTable(Map<String, Object> payload) {
         send("table", payload);
+    }
+
+    @Override
+    public void onEvidence(EvidenceRegistry.Evidence evidence) {
+        if (evidence == null) {
+            return;
+        }
+        send("evidence", Map.of(
+                "id", evidence.id(),
+                "type", evidence.type().name(),
+                "summary", evidence.summary(),
+                "payloadRef", evidence.payloadRef()
+        ));
     }
 
     private List<Map<String, Object>> buildSourcesPayload(List<RetrievedChunk> retrieved) {

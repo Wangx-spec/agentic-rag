@@ -1,6 +1,7 @@
 package com.agenticrag.tool.tools;
 
 import com.agenticrag.tool.Tool; 
+import com.agenticrag.tool.ToolDomain; 
 import com.agenticrag.tool.ToolRegistry; 
 import jakarta.annotation.PostConstruct; 
 import lombok.RequiredArgsConstructor; 
@@ -10,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component; 
 import java.util.List; 
 import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -73,6 +75,10 @@ public class ListTablesTool implements Tool {
 
     @Override public String parametersSchema () { 
         return SCHEMA;
+    }
+
+    @Override public Set<ToolDomain> domains () {
+        return Set.of(ToolDomain.SQL);
     }
 
     @Override public String execute (Map<String, Object> arguments) { try { Object tableArg = arguments == null ? null : arguments.get( "table" ); if (tableArg != null && !tableArg.toString().isBlank()) { return renderSingleTable(tableArg.toString().trim());

@@ -9,11 +9,13 @@ import com.agenticrag.llm.LlmClient;
 import com.agenticrag.llm.dto.ChatMessage;
 import com.agenticrag.llm.dto.LlmResponse;
 import com.agenticrag.llm.dto.ToolCall;
+import com.agenticrag.rag.retrieve.HybridRetriever;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
 import com.agenticrag.tool.Tool;
 import com.agenticrag.tool.ToolRegistry;
 import com.agenticrag.tool.ToolSchemaValidator;
 import com.agenticrag.tool.tools.RunSqlTool;
+import com.agenticrag.tool.tools.SearchKnowledgeBaseTool;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
@@ -524,6 +526,34 @@ class AgentLoopTest {
         assertEquals("查询执行失败：SQL 有误或数据不可用（请检查语法与表/字段名）。",
                 ctx.getMessages().get(ctx.getMessages().size() - 1).content());
         verify(reporter).onFinal("SQL 查询失败，终止循环");
+    }
+
+    @Test
+    void searchToolRegistersEvidenceAndReportsIt() {
+        HybridRetriever retriever = mock(HybridRetriever.class);
+        SearchKnowledgeBaseTool kbTool = new SearchKnowledgeBaseTool(retriever, toolRegistry);
+        when(toolRegistry.find("search_knowledge_base")).thenReturn(Optional.of(kbTool));
+        when(retriever.retrieve("M3")).thenReturn(List.of(
+                new RetrievedChunk(1L, 10L, 1, "M3 包含状态机。", "m3.md", 0.9, 1)
+        ));
+        when(llmClient.chatWithTools(anyList(), anyList()))
+                .thenReturn(new LlmResponse("", List.of(
+                        new ToolCall("call_1", "search_knowledge_base", "{\"query\":\"M3\"}")
+                )))
+                .thenReturn(new LlmResponse("M3 包含状态机 [1]。", List.of()));
+
+        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
+        AgentContext ctx = new AgentContext(
+                List.of(ChatMessage.user("查一下 M3")),
+                List.of(),
+                5
+        );
+
+        String result = loop.run(ctx, reporter);
+
+        assertEquals("M3 包含状态机 [1]。", result);
+        assertTrue(ctx.getEvidenceRegistry().find("1").isPresent());
+        verify(reporter).onEvidence(any());
     }
 
     // ==================== ThreadLocal 兜底清理测试 ====================

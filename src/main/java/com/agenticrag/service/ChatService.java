@@ -3,6 +3,7 @@ package com.agenticrag.service;
 import com.agenticrag.agent.AgentContext;
 import com.agenticrag.agent.AgentLoop;
 import com.agenticrag.agent.StepReporter;
+import com.agenticrag.agent.SubQueryPlanner;
 import com.agenticrag.config.LlmProperties;
 import com.agenticrag.intent.Intent;
 import com.agenticrag.intent.IntentClassifier;
@@ -18,6 +19,7 @@ import com.agenticrag.multiagent.MultiAgentOrchestrator;
 import com.agenticrag.rag.retrieve.HybridRetriever;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
 import com.agenticrag.tool.ToolRegistry;
+import com.agenticrag.tool.ToolVisibilityRouter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -43,6 +45,8 @@ public class ChatService {
     private final IntentClassifier intentClassifier;
     private final MultiAgentOrchestrator multiAgentOrchestrator;
     private final QueryUnderstandingService queryUnderstandingService;
+    private final ToolVisibilityRouter toolVisibilityRouter;
+    private final SubQueryPlanner subQueryPlanner;
     /**
      * M9 记忆编排门面（可选）：jdbc 模式提供「摘要+实体+长期记忆」读编排与写回调度；
      * 单测与其余记忆模式可为 null，行为退化为直连 memory 的既有语义。
@@ -59,6 +63,23 @@ public class ChatService {
                        MultiAgentOrchestrator multiAgentOrchestrator,
                        QueryUnderstandingService queryUnderstandingService,
                        @Autowired(required = false) MemoryContextAssembler memoryAssembler) {
+        this(llmProperties, llmClient, memory, hybridRetriever, agentLoop, toolRegistry,
+                intentClassifier, multiAgentOrchestrator, queryUnderstandingService, null, null, memoryAssembler);
+    }
+
+    @Autowired
+    public ChatService(LlmProperties llmProperties,
+                       LlmClient llmClient,
+                       ConversationMemory memory,
+                       HybridRetriever hybridRetriever,
+                       AgentLoop agentLoop,
+                       ToolRegistry toolRegistry,
+                       IntentClassifier intentClassifier,
+                       MultiAgentOrchestrator multiAgentOrchestrator,
+                       QueryUnderstandingService queryUnderstandingService,
+                       @Autowired(required = false) ToolVisibilityRouter toolVisibilityRouter,
+                       @Autowired(required = false) SubQueryPlanner subQueryPlanner,
+                       @Autowired(required = false) MemoryContextAssembler memoryAssembler) {
         this.llmProperties = llmProperties;
         this.llmClient = llmClient;
         this.memory = memory;
@@ -68,6 +89,8 @@ public class ChatService {
         this.intentClassifier = intentClassifier;
         this.multiAgentOrchestrator = multiAgentOrchestrator;
         this.queryUnderstandingService = queryUnderstandingService;
+        this.toolVisibilityRouter = toolVisibilityRouter;
+        this.subQueryPlanner = subQueryPlanner;
         this.memoryAssembler = memoryAssembler;
     }
 
@@ -134,7 +157,7 @@ public class ChatService {
             case CHAT, OFF_TOPIC -> withRoutedIntent(runPlain(sink, sessionId, userMessage), result.intent());
             case KB_QA -> withRoutedIntent(runRag(sink, sessionId, userMessage), result.intent());
             case MULTI_TASK -> withRoutedIntent(runMultiAgentSafely(sink, sessionId, userMessage), result.intent());
-            case TOOL_TASK -> withRoutedIntent(runAgentSafely(sink, sessionId, userMessage), result.intent());
+            case TOOL_TASK, DATA_ANALYSIS -> withRoutedIntent(runAgentSafely(sink, sessionId, userMessage), result.intent());
             case UNKNOWN -> withRoutedIntent(runImplicitRoute(sink, sessionId, userMessage), result.intent());
         };
     }
@@ -243,10 +266,16 @@ public class ChatService {
     private ChatResult runAgent(ChatEventSink sink, String sessionId, String userMessage) {
         List<ToolInvocation> toolInvocations = new ArrayList<>();
         Optional<QueryUnderstanding> understanding = understandForAgent(userMessage);
+        List<ToolSchema> visibleTools = toToolSchemas(understanding);
         List<ChatMessage> agentMessages = buildAgentMessages(sessionId, userMessage);
-        understanding.filter(this::hasRetrievalGuidance)
+        if (subQueryPlanner != null) {
+            subQueryPlanner.buildPlanBlock(understanding)
+                    .ifPresent(value -> agentMessages.add(ChatMessage.system(value)));
+        }
+        understanding.filter(value -> hasRetrievalGuidance(value, visibleTools))
                 .ifPresent(value -> agentMessages.add(ChatMessage.system(buildRetrievalGuidance(value))));
-        AgentContext ctx = new AgentContext(agentMessages, toToolSchemas(), llmProperties.getMaxAgentRounds(), userMessage);
+        AgentContext ctx = new AgentContext(agentMessages, visibleTools, llmProperties.getMaxAgentRounds(), userMessage);
+        ctx.setRoutedIntent(understanding.map(QueryUnderstanding::intent).orElse(Intent.UNKNOWN));
         StepReporter reporter = new StepReporter() {
             @Override
             public void onThinking(String toolName) {
@@ -273,6 +302,11 @@ public class ChatService {
             public void onTable(java.util.Map<String, Object> payload) {
                 sink.onTable(payload);
             }
+
+            @Override
+            public void onEvidence(com.agenticrag.agent.EvidenceRegistry.Evidence evidence) {
+                sink.onEvidence(evidence);
+            }
         };
         String finalAnswer = agentLoop.run(ctx, reporter);
         streamAnswer(sink, finalAnswer);
@@ -291,8 +325,10 @@ public class ChatService {
         return Optional.ofNullable(queryUnderstandingService.understand(userMessage)).orElse(Optional.empty());
     }
 
-    private boolean hasRetrievalGuidance(QueryUnderstanding understanding) {
-        return understanding.normalizedQuery() != null || !understanding.subQueries().isEmpty();
+    private boolean hasRetrievalGuidance(QueryUnderstanding understanding, List<ToolSchema> visibleTools) {
+        boolean retrievalVisible = toolVisibilityRouter == null
+                || visibleTools.stream().anyMatch(tool -> "search_knowledge_base".equals(tool.name()));
+        return retrievalVisible && (understanding.normalizedQuery() != null || !understanding.subQueries().isEmpty());
     }
 
     private String buildRetrievalGuidance(QueryUnderstanding understanding) {
@@ -441,7 +477,10 @@ public class ChatService {
         }
     }
 
-    private List<ToolSchema> toToolSchemas() {
+    private List<ToolSchema> toToolSchemas(Optional<QueryUnderstanding> understanding) {
+        if (toolVisibilityRouter != null) {
+            return toolVisibilityRouter.visibleTools(understanding);
+        }
         return toolRegistry.all().values().stream()
                 .map(tool -> new ToolSchema(tool.name(), tool.description(), tool.parametersSchema()))
                 .toList();

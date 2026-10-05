@@ -1,11 +1,13 @@
 package com.agenticrag.tool.mcp;
 
 import com.agenticrag.tool.Tool;
+import com.agenticrag.tool.ToolDomain;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class McpToolAdapter implements Tool {
@@ -37,6 +39,11 @@ public class McpToolAdapter implements Tool {
         } catch (Exception e) {
             return "{}";
         }
+    }
+
+    @Override
+    public Set<ToolDomain> domains() {
+        return Set.of(ToolDomain.MCP);
     }
 
     @Override

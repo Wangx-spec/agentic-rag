@@ -3,6 +3,7 @@ package com.agenticrag.agent;
 import com.agenticrag.llm.dto.ChatMessage;
 import com.agenticrag.llm.dto.ToolSchema;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
+import com.agenticrag.intent.Intent;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,8 +20,12 @@ public class AgentContext {
     private final int maxRounds;
     private final String originalQuery;
     private int currentRound;
+    private int toolCallCount;
+    private boolean finalizeRequested;
+    private Intent routedIntent;
     private final List<String> stateTrajectory;
     private final Map<Long, RetrievedChunk> sourcesByChunkId;
+    private final EvidenceRegistry evidenceRegistry;
 
 
     public AgentContext(List<ChatMessage> messages, List<ToolSchema> availableTools, int maxRounds) {
@@ -34,8 +39,11 @@ public class AgentContext {
         this.maxRounds = maxRounds;
         this.originalQuery = originalQuery;
         this.currentRound = 0;
+        this.toolCallCount = 0;
+        this.finalizeRequested = false;
         this.stateTrajectory = new ArrayList<>();
         this.sourcesByChunkId = new LinkedHashMap<>();
+        this.evidenceRegistry = new EvidenceRegistry();
     }
 
 
@@ -61,6 +69,22 @@ public class AgentContext {
 
     public void incrementRound() {
         currentRound++;
+    }
+
+    public void incrementToolCallCount() {
+        toolCallCount++;
+    }
+
+    public int getToolCallCount() {
+        return toolCallCount;
+    }
+
+    public void requestFinalize() {
+        finalizeRequested = true;
+    }
+
+    public boolean isFinalizeRequested() {
+        return finalizeRequested;
     }
 
     public boolean isMaxRoundsReached() {
@@ -102,5 +126,17 @@ public class AgentContext {
 
     public String getOriginalQuery() {
         return originalQuery;
+    }
+
+    public EvidenceRegistry getEvidenceRegistry() {
+        return evidenceRegistry;
+    }
+
+    public Intent getRoutedIntent() {
+        return routedIntent;
+    }
+
+    public void setRoutedIntent(Intent routedIntent) {
+        this.routedIntent = routedIntent;
     }
 }

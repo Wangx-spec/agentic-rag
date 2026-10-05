@@ -1,6 +1,7 @@
 package com.agenticrag.tool.tools;
 
 import com.agenticrag.tool.Tool;
+import com.agenticrag.tool.ToolDomain;
 import com.agenticrag.tool.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -48,6 +50,11 @@ public class CalculatorTool implements Tool {
     @Override
     public String parametersSchema() {
         return SCHEMA;
+    }
+
+    @Override
+    public Set<ToolDomain> domains() {
+        return Set.of(ToolDomain.CALC);
     }
 
     @Override

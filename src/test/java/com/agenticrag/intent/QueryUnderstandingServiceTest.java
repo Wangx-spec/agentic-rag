@@ -62,6 +62,21 @@ class QueryUnderstandingServiceTest {
     }
 
     @Test
+    void understandsDataAnalysisWithSubQueries() {
+        when(llmClient.chat(org.mockito.ArgumentMatchers.anyList()))
+                .thenReturn("""
+                        {"intent":"DATA_ANALYSIS","confidence":0.9,
+                         "normalized_query":"分析销量下滑原因和用户评论",
+                         "sub_queries":["各品类销量趋势是什么？","用户评论怎么说？"]}
+                        """);
+
+        QueryUnderstanding result = service.understand("销量为什么下滑？用户评论怎么说？").orElseThrow();
+
+        assertEquals(Intent.DATA_ANALYSIS, result.intent());
+        assertEquals(2, result.subQueries().size());
+    }
+
+    @Test
     void invalidJsonFailsOpen() {
         when(llmClient.chat(org.mockito.ArgumentMatchers.anyList())).thenReturn("{bad");
 

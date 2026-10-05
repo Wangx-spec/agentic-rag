@@ -23,7 +23,8 @@ public class IntentClassifier {
             - CHAT: 日常闲聊、打招呼、问候、情感交流等不需要查询知识库或工具的对话
             - KB_QA: 需要查询知识库文档才能回答的问题，通常涉及特定领域知识、文档内容、技术细节
             - MULTI_TASK: 明确包含多个彼此独立、可分别作答的子问题，适合先拆解再汇总
-            - TOOL_TASK: 需要调用工具完成的任务，如数学计算、数据查询、API调用等
+            - TOOL_TASK: 需要调用工具完成的任务，如数学计算、API 调用等
+            - DATA_ANALYSIS: 需要查询数据库、统计分析、销售/订单/用户/商品/评论等结构化或混合数据分析的问题
             - OFF_TOPIC: 明显偏离主题、无意义、恶意或无法处理的输入
             
             示例：
@@ -32,13 +33,15 @@ public class IntentClassifier {
             用户："A 是什么？A 和 B 有什么区别？" → {"intent": "MULTI_TASK", "confidence": 0.9}
             用户："什么是 RAG？" → {"intent": "KB_QA", "confidence": 0.9}
             用户："计算 123 * 456" → {"intent": "TOOL_TASK", "confidence": 0.95}
+            用户："各品类销售额排名是多少？" → {"intent": "DATA_ANALYSIS", "confidence": 0.95}
+            用户："销量为什么下滑？用户评论怎么说？" → {"intent": "DATA_ANALYSIS", "confidence": 0.9}
             用户："asdfghjkl" → {"intent": "OFF_TOPIC", "confidence": 0.8}
             
             要求：
             1. 仅返回 JSON，格式为 {"intent": "类型", "confidence": 浮点数}
             2. confidence 取值 0-1，表示分类置信度
             3. 不要输出任何解释文字
-            4. 仅当问题明确包含多个独立子问题时才判 MULTI_TASK；不确定时倾向单链路（KB_QA / CHAT / TOOL_TASK）
+            4. 仅当问题明确包含多个独立子问题且不属于数据分析时才判 MULTI_TASK；数据取数、统计、经营分析优先判 DATA_ANALYSIS；不确定时倾向单链路（KB_QA / CHAT / TOOL_TASK）
             """;
     
     private final IntentProperties intentProperties;

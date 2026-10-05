@@ -4,6 +4,7 @@ import com.agenticrag.memory.MemoryProperties;
 import com.agenticrag.memory.MemoryScope;
 import com.agenticrag.memory.longterm.LongTermMemoryService;
 import com.agenticrag.tool.Tool;
+import com.agenticrag.tool.ToolDomain;
 import com.agenticrag.tool.ToolRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 长期记忆检索工具（M9/T9）：供 Agent 主动回忆当前用户的跨会话记忆。
@@ -64,6 +66,11 @@ public class SearchMemoryTool implements Tool {
     @Override
     public String parametersSchema() {
         return SCHEMA;
+    }
+
+    @Override
+    public Set<ToolDomain> domains() {
+        return Set.of(ToolDomain.MEMORY);
     }
 
     /**

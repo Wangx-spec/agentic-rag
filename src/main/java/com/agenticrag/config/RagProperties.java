@@ -45,6 +45,42 @@ public class RagProperties {
         private int listDocumentsLimit = 20;
         /** get_document/list_documents 注册总开关：false 时两工具不注册（评测冻结配置用，r08b 消融为负后回退 r07d 口径） */
         private boolean documentToolsEnabled = true;
+        private Routing routing = new Routing();
+        private Planning planning = new Planning();
+        private Critic critic = new Critic();
+        private Budget budget = new Budget();
+    }
+
+    @Data
+    public static class Routing {
+        /** S3.2：按意图过滤 Agent 当次可见工具。 */
+        private boolean enabled = true;
+        /** 未声明具体业务域的 MCP 工具是否始终附加到白名单。 */
+        private boolean includeMcpTools = true;
+    }
+
+    @Data
+    public static class Planning {
+        /** S3.2：将子问题规划块注入 Agent 上下文。 */
+        private boolean enabled = true;
+    }
+
+    @Data
+    public static class Critic {
+        /** S3.2：最终回答前进行证据自检。 */
+        private boolean enabled = true;
+        private int maxRetries = 1;
+    }
+
+    @Data
+    public static class Budget {
+        /** S3.2：工具输出截断、工具调用上限与 token 断路。 */
+        private boolean enabled = true;
+        private int maxToolCallsPerSession = 12;
+        private int maxTotalTokens = 60000;
+        private int sqlMaxRows = 200;
+        private int sqlMaxChars = 8000;
+        private int retrievalMaxChars = 6000;
     }
 
     @Data

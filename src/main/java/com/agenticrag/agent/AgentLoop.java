@@ -13,7 +13,9 @@ import com.agenticrag.rag.retrieve.RetrievedChunk;
 import com.agenticrag.tool.Tool;
 import com.agenticrag.tool.ToolRegistry;
 import com.agenticrag.tool.ToolSchemaValidator;
+import com.agenticrag.tool.tools.RunSqlTool;
 import com.agenticrag.tool.tools.SearchKnowledgeBaseTool;
+import com.agenticrag.tool.tools.SearchMemoryTool;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +39,8 @@ public class AgentLoop {
     private final ToolSchemaValidator toolSchemaValidator;
     private final RagProperties ragProperties;
     private final RerankClient rerankClient;
+    private final BudgetGuard budgetGuard;
+    private final CriticService criticService;
 
     public AgentLoop(LlmClient llmClient,
                      ToolRegistry toolRegistry,
@@ -44,12 +48,26 @@ public class AgentLoop {
                      ToolSchemaValidator toolSchemaValidator,
                      RagProperties ragProperties,
                      @Autowired(required = false) RerankClient rerankClient) {
+        this(llmClient, toolRegistry, properties, toolSchemaValidator, ragProperties, rerankClient, null, null);
+    }
+
+    @Autowired
+    public AgentLoop(LlmClient llmClient,
+                     ToolRegistry toolRegistry,
+                     LlmProperties properties,
+                     ToolSchemaValidator toolSchemaValidator,
+                     RagProperties ragProperties,
+                     @Autowired(required = false) RerankClient rerankClient,
+                     @Autowired(required = false) BudgetGuard budgetGuard,
+                     @Autowired(required = false) CriticService criticService) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.properties = properties;
         this.toolSchemaValidator = toolSchemaValidator;
         this.ragProperties = ragProperties;
         this.rerankClient = rerankClient;
+        this.budgetGuard = budgetGuard;
+        this.criticService = criticService;
     }
 
     /**
@@ -69,7 +87,9 @@ public class AgentLoop {
     private String doRun(AgentContext ctx, StepReporter reporter) {
 
         while (!ctx.isMaxRoundsReached()) {
-            List<ToolSchema> tools = ctx.getCurrentRound() == ctx.getMaxRounds() - 1 ? List.of() : ctx.getAvailableTools();
+            List<ToolSchema> tools = ctx.getCurrentRound() == ctx.getMaxRounds() - 1 || ctx.isFinalizeRequested()
+                    ? List.of()
+                    : ctx.getAvailableTools();
             LlmResponse response = llmClient.chatWithTools(ctx.getMessages(), tools);
 
             if (response.toolCalls() == null || response.toolCalls().isEmpty()) {
@@ -78,7 +98,7 @@ public class AgentLoop {
                 reporter.onFinal("生成最终回答");
                 String answer = sanitizeFinalAnswer(ctx, response.content());
                 pruneCitations(ctx);
-                return answer;
+                return reviewFinalAnswer(ctx, answer);
             }
 
             ToolCall toolCall = response.toolCalls().get(0);
@@ -88,15 +108,27 @@ public class AgentLoop {
             ctx.recordState(AgentState.ACTING);
             reporter.onActing(toolCall.name(), toolCall.argumentsJson());
 
+            int evidenceStart = ctx.getEvidenceRegistry().snapshot().size();
             String result = executeTool(ctx, toolCall);
-            for (java.util.Map<String, Object> tablePayload :
-                    com.agenticrag.tool.tools.RunSqlTool.drainTableEvents()) {
+            ctx.incrementToolCallCount();
+            result = truncateToolResult(toolCall.name(), result);
+
+            for (java.util.Map<String, Object> tablePayload : RunSqlTool.drainTableEvents()) {
+                EvidenceRegistry.Evidence evidence = ctx.getEvidenceRegistry().registerSqlResult(
+                        String.valueOf(tablePayload.getOrDefault("sql", "")),
+                        castStringList(tablePayload.get("columns")),
+                        castList(tablePayload.get("rows")),
+                        Boolean.TRUE.equals(tablePayload.get("truncated"))
+                );
+                tablePayload.put("refNo", evidence.id());
                 reporter.onTable(tablePayload);
             }
+            result = appendNewEvidence(ctx, reporter, result, evidenceStart);
+
             boolean hardFailure = result != null
-                    && result.startsWith(com.agenticrag.tool.tools.RunSqlTool.HARD_FAILURE_PREFIX);
+                    && result.startsWith(RunSqlTool.HARD_FAILURE_PREFIX);
             String observation = hardFailure
-                    ? result.substring(com.agenticrag.tool.tools.RunSqlTool.HARD_FAILURE_PREFIX.length())
+                    ? result.substring(RunSqlTool.HARD_FAILURE_PREFIX.length())
                     : result;
 
             ctx.recordState(AgentState.OBSERVING);
@@ -109,6 +141,10 @@ public class AgentLoop {
                 reporter.onFinal("SQL 查询失败，终止循环");
                 return observation;
             }
+            if (budgetGuard != null && budgetGuard.shouldFinalize(ctx)) {
+                ctx.requestFinalize();
+                ctx.addMessage(ChatMessage.system(budgetGuard.finalizeInstruction(ctx)));
+            }
             ctx.incrementRound();
         }
         ctx.recordState(AgentState.FINAL);
@@ -118,7 +154,7 @@ public class AgentLoop {
             ctx.addMessage(ChatMessage.assistant(finalContent));
             String answer = sanitizeFinalAnswer(ctx, finalContent);
             pruneCitations(ctx);
-            return answer;
+            return reviewFinalAnswer(ctx, answer);
         } catch (Exception e) {
             log.warn("强制 FINAL 时 LLM 调用失败", e);
             return "抱歉，处理超时，请简化您的问题后重试。";
@@ -249,6 +285,9 @@ public class AgentLoop {
      * @return 工具执行结果
      */
     private String executeTool(AgentContext ctx, ToolCall toolCall) {
+        if (!isToolAllowedInContext(ctx, toolCall.name())) {
+            return "错误：工具 \"" + toolCall.name() + "\" 当前不可用于本次意图路由。";
+        }
         Optional<Tool> toolOpt = toolRegistry.find(toolCall.name());
         if (toolOpt.isEmpty()) {
             return "错误：未找到工具 \"" + toolCall.name() + "\"，可用工具：" + toolRegistry.all().keySet();
@@ -271,13 +310,25 @@ public class AgentLoop {
                 String query = queryObj.toString();
                 List<RetrievedChunk> chunks = kbTool.search(query);
                 ctx.addSources(chunks);
+                ctx.getEvidenceRegistry().registerDocumentChunks(chunks);
                 return kbTool.render(chunks);
             }
-            return tool.execute(args);
+            String result = tool.execute(args);
+            if (tool instanceof SearchMemoryTool && result != null && !result.startsWith("错误")) {
+                ctx.getEvidenceRegistry().registerMemory("长期记忆检索结果", toolCall.id());
+            }
+            return result;
         } catch (Exception e) {
             log.warn("工具 {} 执行失败", toolCall.name(), e);
             return "工具参数解析失败：" + e.getMessage();
         }
+    }
+
+    private boolean isToolAllowedInContext(AgentContext ctx, String toolName) {
+        if (ctx.getRoutedIntent() == null) {
+            return true;
+        }
+        return ctx.getAvailableTools().stream().anyMatch(tool -> tool.name().equals(toolName));
     }
 
     /**
@@ -291,6 +342,64 @@ public class AgentLoop {
         }
         int maxLen = 100;
         return result.length() > maxLen ? result.substring(0, maxLen) + "..." : result;
+    }
+
+    private String truncateToolResult(String toolName, String result) {
+        return budgetGuard == null ? result : budgetGuard.truncate(toolName, result);
+    }
+
+    private String appendNewEvidence(AgentContext ctx, StepReporter reporter, String result, int startIndex) {
+        List<EvidenceRegistry.Evidence> evidences = ctx.getEvidenceRegistry().snapshot();
+        if (evidences.size() <= startIndex) {
+            return result;
+        }
+        StringBuilder sb = new StringBuilder(result == null ? "" : result);
+        sb.append("\n\n证据编号：");
+        for (int i = startIndex; i < evidences.size(); i++) {
+            EvidenceRegistry.Evidence evidence = evidences.get(i);
+            reporter.onEvidence(evidence);
+            sb.append("\n").append(evidence.citationText());
+        }
+        return sb.toString();
+    }
+
+    private String reviewFinalAnswer(AgentContext ctx, String answer) {
+        if (criticService == null) {
+            return answer;
+        }
+        CriticService.CriticResult result = criticService.review(answer, ctx);
+        if (result.verdict() == CriticService.CriticVerdict.PASS) {
+            return answer;
+        }
+        if (result.verdict() == CriticService.CriticVerdict.DECLARE_UNCERTAIN) {
+            return answer + criticService.uncertainSuffix(result.reason());
+        }
+        try {
+            ctx.addMessage(ChatMessage.system("证据自检发现以下内容缺少支撑，请只依据已登记证据重答，并对不确定部分明确说明："
+                    + result.reason()));
+            String retry = llmClient.chat(ctx.getMessages());
+            CriticService.CriticResult retryResult = criticService.review(retry, ctx);
+            if (retryResult.verdict() == CriticService.CriticVerdict.PASS) {
+                return retry;
+            }
+            return retry + criticService.uncertainSuffix(retryResult.reason());
+        } catch (Exception e) {
+            log.warn("Critic 触发重答失败，保留原回答并追加不确定性说明", e);
+            return answer + criticService.uncertainSuffix(result.reason());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> castStringList(Object value) {
+        if (value instanceof List<?> list) {
+            return list.stream().map(String::valueOf).toList();
+        }
+        return List.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<?> castList(Object value) {
+        return value instanceof List<?> list ? list : List.of();
     }
 
 }

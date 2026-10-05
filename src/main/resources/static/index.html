@@ -120,6 +120,20 @@
   }
   .source-name { color: #d8deeb; font-weight: 600; }
   .source-snippet { font-size: 12px; line-height: 1.7; color: #aab0c0; white-space: pre-wrap; word-break: break-word; }
+  .evidence-panel {
+    display: none; flex-direction: column; gap: 8px; margin-top: 2px;
+    background: #161a22; border: 1px solid #2a2e39; border-radius: 10px; padding: 10px 12px;
+  }
+  .evidence-panel.open { display: flex; }
+  .evidence-title { font-size: 12px; color: #8a8f9c; }
+  .evidence-list { display: flex; flex-direction: column; gap: 8px; }
+  .evidence-item {
+    background: #11151c; border: 1px solid #23262f; border-radius: 8px; padding: 8px 10px;
+    display: flex; align-items: center; gap: 8px; font-size: 12px; color: #cdd5f5;
+  }
+  .evidence-type {
+    font-size: 10px; color: #5fd9a4; border: 1px solid #2f6b54; border-radius: 999px; padding: 2px 7px;
+  }
   /* ===== 数据表格卡片 + 图表（T11 table 事件） ===== */
   .table-panel {
     display: none; flex-direction: column; gap: 10px; margin-top: 2px;
@@ -455,6 +469,16 @@ function createAssistantStream() {
   const tablePanel = document.createElement('div');
   tablePanel.className = 'table-panel';
 
+  const evidencePanel = document.createElement('div');
+  evidencePanel.className = 'evidence-panel';
+  const evidenceTitle = document.createElement('div');
+  evidenceTitle.className = 'evidence-title';
+  evidenceTitle.textContent = '证据清单';
+  const evidenceList = document.createElement('div');
+  evidenceList.className = 'evidence-list';
+  evidencePanel.appendChild(evidenceTitle);
+  evidencePanel.appendChild(evidenceList);
+
   const answerBlock = document.createElement('div');
   answerBlock.className = 'stream-block stream-answer';
   const answerLabel = document.createElement('div');
@@ -478,6 +502,7 @@ function createAssistantStream() {
   bubble.appendChild(thinkingBlock);
   bubble.appendChild(tablePanel);
   bubble.appendChild(answerBlock);
+  bubble.appendChild(evidencePanel);
   bubble.appendChild(sourcePanel);
   row.appendChild(bubble);
 
@@ -487,6 +512,8 @@ function createAssistantStream() {
     thinkingLabel,
     thinkingContent,
     tablePanel,
+    evidencePanel,
+    evidenceList,
     answerBlock,
     answerLabel,
     answerContent,
@@ -602,6 +629,13 @@ async function send() {
           view.tablePanel.classList.add('open');
           appendTableCard(view, payload);
           messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
+        } else if (evt.event === 'evidence') {
+          let payload = null;
+          try { payload = JSON.parse(evt.data); } catch (e) {}
+          if (!payload || !payload.id) continue;
+          const view = ensureStreamView();
+          appendEvidence(view, payload);
+          messagesEl.parentElement.scrollTop = messagesEl.parentElement.scrollHeight;
         } else if (evt.event === 'done') {
           const view = ensureStreamView();
           try {
@@ -669,6 +703,19 @@ function renderSources(view, sources) {
   view.sourcePanel.classList.add('open');
 }
 
+function appendEvidence(view, payload) {
+  if (!view || !payload) return;
+  const item = document.createElement('div');
+  item.className = 'evidence-item';
+  item.innerHTML = `
+    <span class="source-index">[${escapeHtml(payload.id ?? '?')}]</span>
+    <span class="evidence-type">${escapeHtml(payload.type || 'EVIDENCE')}</span>
+    <span>${escapeHtml(payload.summary || '')}</span>
+  `;
+  view.evidenceList.appendChild(item);
+  view.evidencePanel.classList.add('open');
+}
+
 /* ===== 数据表格卡片 + ECharts 图表（T11 table 事件） ===== */
 function isNumericValue(v) {
   if (v === null || v === undefined || v === '') return false;
@@ -704,6 +751,12 @@ function appendTableCard(view, payload) {
 
   const head = document.createElement('div');
   head.className = 'table-card-head';
+  if (payload.refNo) {
+    const refEl = document.createElement('span');
+    refEl.className = 'source-index';
+    refEl.textContent = '[' + payload.refNo + ']';
+    head.appendChild(refEl);
+  }
   if (payload.sql) {
     const sqlEl = document.createElement('code');
     sqlEl.className = 'table-sql';
