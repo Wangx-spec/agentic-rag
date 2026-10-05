@@ -68,3 +68,23 @@ CREATE TABLE IF NOT EXISTS long_term_memories (
     created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_ltm ON long_term_memories(user_id, created_at DESC);
+
+-- ================= S3.3 数据分析评测轨迹（2026-10） =================
+-- 仅评测开关开启时写入；主问答链路 fail-open，不依赖本表成功写入。
+CREATE TABLE IF NOT EXISTS run_trace (
+    id BIGSERIAL PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    question_id TEXT NOT NULL,
+    turn INT NOT NULL,
+    event_type TEXT NOT NULL,
+    tool_name TEXT,
+    tool_args_summary TEXT,
+    result_summary TEXT,
+    evidence_ids TEXT ARRAY,
+    evidence_types TEXT ARRAY,
+    routed_intent TEXT,
+    critic_verdict TEXT,
+    tokens_used INT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_run_trace_run ON run_trace(run_id, question_id);

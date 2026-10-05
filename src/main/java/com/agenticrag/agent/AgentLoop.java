@@ -7,6 +7,7 @@ import com.agenticrag.llm.dto.ChatMessage;
 import com.agenticrag.llm.dto.LlmResponse;
 import com.agenticrag.llm.dto.ToolCall;
 import com.agenticrag.llm.dto.ToolSchema;
+import com.agenticrag.eval.trace.TraceRecorder;
 import com.agenticrag.rag.retrieve.RerankClient;
 import com.agenticrag.rag.retrieve.RerankResult;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
@@ -41,6 +42,7 @@ public class AgentLoop {
     private final RerankClient rerankClient;
     private final BudgetGuard budgetGuard;
     private final CriticService criticService;
+    private final TraceRecorder traceRecorder;
 
     public AgentLoop(LlmClient llmClient,
                      ToolRegistry toolRegistry,
@@ -48,7 +50,19 @@ public class AgentLoop {
                      ToolSchemaValidator toolSchemaValidator,
                      RagProperties ragProperties,
                      @Autowired(required = false) RerankClient rerankClient) {
-        this(llmClient, toolRegistry, properties, toolSchemaValidator, ragProperties, rerankClient, null, null);
+        this(llmClient, toolRegistry, properties, toolSchemaValidator, ragProperties, rerankClient, null, null, null);
+    }
+
+    public AgentLoop(LlmClient llmClient,
+                     ToolRegistry toolRegistry,
+                     LlmProperties properties,
+                     ToolSchemaValidator toolSchemaValidator,
+                     RagProperties ragProperties,
+                     RerankClient rerankClient,
+                     BudgetGuard budgetGuard,
+                     CriticService criticService) {
+        this(llmClient, toolRegistry, properties, toolSchemaValidator, ragProperties,
+                rerankClient, budgetGuard, criticService, null);
     }
 
     @Autowired
@@ -59,7 +73,8 @@ public class AgentLoop {
                      RagProperties ragProperties,
                      @Autowired(required = false) RerankClient rerankClient,
                      @Autowired(required = false) BudgetGuard budgetGuard,
-                     @Autowired(required = false) CriticService criticService) {
+                     @Autowired(required = false) CriticService criticService,
+                     @Autowired(required = false) TraceRecorder traceRecorder) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.properties = properties;
@@ -68,6 +83,7 @@ public class AgentLoop {
         this.rerankClient = rerankClient;
         this.budgetGuard = budgetGuard;
         this.criticService = criticService;
+        this.traceRecorder = traceRecorder;
     }
 
     /**
@@ -81,6 +97,9 @@ public class AgentLoop {
             return doRun(ctx, reporter);
         } finally {
             com.agenticrag.tool.tools.RunSqlTool.clearTableEvents();
+            if (traceRecorder != null) {
+                traceRecorder.flush();
+            }
         }
     }
 
@@ -98,7 +117,7 @@ public class AgentLoop {
                 reporter.onFinal("生成最终回答");
                 String answer = sanitizeFinalAnswer(ctx, response.content());
                 pruneCitations(ctx);
-                return reviewFinalAnswer(ctx, answer);
+                return finalizeAnswer(ctx, reviewFinalAnswer(ctx, answer));
             }
 
             ToolCall toolCall = response.toolCalls().get(0);
@@ -130,6 +149,7 @@ public class AgentLoop {
             String observation = hardFailure
                     ? result.substring(RunSqlTool.HARD_FAILURE_PREFIX.length())
                     : result;
+            recordToolCall(ctx, toolCall, observation);
 
             ctx.recordState(AgentState.OBSERVING);
             reporter.onObserving(summarizeResult(observation));
@@ -139,11 +159,15 @@ public class AgentLoop {
             if (hardFailure) {
                 ctx.recordState(AgentState.FINAL);
                 reporter.onFinal("SQL 查询失败，终止循环");
-                return observation;
+                return finalizeAnswer(ctx, observation);
             }
             if (budgetGuard != null && budgetGuard.shouldFinalize(ctx)) {
                 ctx.requestFinalize();
-                ctx.addMessage(ChatMessage.system(budgetGuard.finalizeInstruction(ctx)));
+                String instruction = budgetGuard.finalizeInstruction(ctx);
+                ctx.addMessage(ChatMessage.system(instruction));
+                if (traceRecorder != null) {
+                    traceRecorder.recordBudget(ctx.getCurrentRound(), instruction);
+                }
             }
             ctx.incrementRound();
         }
@@ -154,10 +178,10 @@ public class AgentLoop {
             ctx.addMessage(ChatMessage.assistant(finalContent));
             String answer = sanitizeFinalAnswer(ctx, finalContent);
             pruneCitations(ctx);
-            return reviewFinalAnswer(ctx, answer);
+            return finalizeAnswer(ctx, reviewFinalAnswer(ctx, answer));
         } catch (Exception e) {
             log.warn("强制 FINAL 时 LLM 调用失败", e);
-            return "抱歉，处理超时，请简化您的问题后重试。";
+            return finalizeAnswer(ctx, "抱歉，处理超时，请简化您的问题后重试。");
         }
     }
 
@@ -359,6 +383,9 @@ public class AgentLoop {
         for (int i = startIndex; i < evidences.size(); i++) {
             EvidenceRegistry.Evidence evidence = evidences.get(i);
             reporter.onEvidence(evidence);
+            if (traceRecorder != null) {
+                traceRecorder.recordEvidence(ctx.getCurrentRound(), evidence);
+            }
             sb.append("\n").append(evidence.citationText());
         }
         return sb.toString();
@@ -368,7 +395,11 @@ public class AgentLoop {
         if (criticService == null) {
             return answer;
         }
+        boolean shouldRecordCritic = criticService.shouldReview(answer, ctx);
         CriticService.CriticResult result = criticService.review(answer, ctx);
+        if (shouldRecordCritic && traceRecorder != null) {
+            traceRecorder.recordCritic(ctx.getCurrentRound(), result.verdict().name(), result.reason());
+        }
         if (result.verdict() == CriticService.CriticVerdict.PASS) {
             return answer;
         }
@@ -381,6 +412,9 @@ public class AgentLoop {
             String retry = llmClient.chat(ctx.getMessages());
             String sanitizedRetry = sanitizeFinalAnswer(ctx, retry);
             CriticService.CriticResult retryResult = criticService.review(sanitizedRetry, ctx);
+            if (traceRecorder != null) {
+                traceRecorder.recordCritic(ctx.getCurrentRound(), retryResult.verdict().name(), retryResult.reason());
+            }
             if (retryResult.verdict() == CriticService.CriticVerdict.PASS) {
                 return sanitizedRetry;
             }
@@ -388,6 +422,19 @@ public class AgentLoop {
         } catch (Exception e) {
             log.warn("Critic 触发重答失败，保留原回答并追加不确定性说明", e);
             return answer + criticService.uncertainSuffix(result.reason());
+        }
+    }
+
+    private String finalizeAnswer(AgentContext ctx, String answer) {
+        if (traceRecorder != null) {
+            traceRecorder.recordFinal(ctx.getCurrentRound(), answer, ctx.getEvidenceRegistry().snapshot());
+        }
+        return answer;
+    }
+
+    private void recordToolCall(AgentContext ctx, ToolCall toolCall, String observation) {
+        if (traceRecorder != null) {
+            traceRecorder.recordToolCall(ctx.getCurrentRound(), toolCall.name(), toolCall.argumentsJson(), summarizeResult(observation));
         }
     }
 

@@ -5,6 +5,7 @@ import com.agenticrag.agent.AgentLoop;
 import com.agenticrag.agent.StepReporter;
 import com.agenticrag.agent.SubQueryPlanner;
 import com.agenticrag.config.LlmProperties;
+import com.agenticrag.eval.trace.TraceRecorder;
 import com.agenticrag.intent.Intent;
 import com.agenticrag.intent.IntentClassifier;
 import com.agenticrag.intent.QueryUnderstanding;
@@ -47,6 +48,7 @@ public class ChatService {
     private final QueryUnderstandingService queryUnderstandingService;
     private final ToolVisibilityRouter toolVisibilityRouter;
     private final SubQueryPlanner subQueryPlanner;
+    private final TraceRecorder traceRecorder;
     /**
      * M9 记忆编排门面（可选）：jdbc 模式提供「摘要+实体+长期记忆」读编排与写回调度；
      * 单测与其余记忆模式可为 null，行为退化为直连 memory 的既有语义。
@@ -64,7 +66,7 @@ public class ChatService {
                        QueryUnderstandingService queryUnderstandingService,
                        @Autowired(required = false) MemoryContextAssembler memoryAssembler) {
         this(llmProperties, llmClient, memory, hybridRetriever, agentLoop, toolRegistry,
-                intentClassifier, multiAgentOrchestrator, queryUnderstandingService, null, null, memoryAssembler);
+                intentClassifier, multiAgentOrchestrator, queryUnderstandingService, null, null, null, memoryAssembler);
     }
 
     @Autowired
@@ -79,6 +81,7 @@ public class ChatService {
                        QueryUnderstandingService queryUnderstandingService,
                        @Autowired(required = false) ToolVisibilityRouter toolVisibilityRouter,
                        @Autowired(required = false) SubQueryPlanner subQueryPlanner,
+                       @Autowired(required = false) TraceRecorder traceRecorder,
                        @Autowired(required = false) MemoryContextAssembler memoryAssembler) {
         this.llmProperties = llmProperties;
         this.llmClient = llmClient;
@@ -91,6 +94,7 @@ public class ChatService {
         this.queryUnderstandingService = queryUnderstandingService;
         this.toolVisibilityRouter = toolVisibilityRouter;
         this.subQueryPlanner = subQueryPlanner;
+        this.traceRecorder = traceRecorder;
         this.memoryAssembler = memoryAssembler;
     }
 
@@ -276,6 +280,9 @@ public class ChatService {
                 .ifPresent(value -> agentMessages.add(ChatMessage.system(buildRetrievalGuidance(value))));
         AgentContext ctx = new AgentContext(agentMessages, visibleTools, llmProperties.getMaxAgentRounds(), userMessage);
         ctx.setRoutedIntent(understanding.map(QueryUnderstanding::intent).orElse(Intent.UNKNOWN));
+        if (traceRecorder != null) {
+            traceRecorder.recordIntent(0, ctx.getRoutedIntent().name());
+        }
         StepReporter reporter = new StepReporter() {
             @Override
             public void onThinking(String toolName) {

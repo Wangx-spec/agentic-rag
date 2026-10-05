@@ -18,6 +18,39 @@ public class EvalProperties {
 
     private EnterpriseRag enterpriseRag = new EnterpriseRag();
 
+    private Trace trace = new Trace();
+
+    private Da da = new Da();
+
+    @Data
+    public static class Trace {
+
+        /** S3.3 轨迹采集开关：默认关闭，仅评测脚本显式开启。 */
+        private boolean enabled = false;
+
+        /** 工具参数/结果摘要最大字符数。 */
+        private int summaryMaxChars = 500;
+    }
+
+    @Data
+    public static class Da {
+
+        /** S3.3 数据分析评测集路径（入库版本化）。 */
+        private String questionsFile = "eval/datasets/da-questions-v1.jsonl";
+
+        /** 数据分析评测答案与报告输出目录。 */
+        private String roundsDir = "eval-answers/rounds-da";
+
+        /** run | judge */
+        private String action = "run";
+
+        /** 本次评测运行标识。 */
+        private String runId = "da-smoke";
+
+        /** 冒烟时可限制题数；0 表示全量。 */
+        private int limit = 0;
+    }
+
     @Data
     public static class EnterpriseRag {
 
