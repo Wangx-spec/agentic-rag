@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiFunction;
 
 @Component
 @RequiredArgsConstructor
@@ -89,13 +90,22 @@ public class SearchKnowledgeBaseTool implements Tool {
      * @return 渲染后的字符串
      * */
     public String render(List<RetrievedChunk> chunks) {
+        return render(chunks, (chunk, index) -> chunk.rank());
+    }
+
+    public String render(List<RetrievedChunk> chunks, List<Integer> citationNumbers) {
+        return render(chunks, (chunk, index) -> citationNumbers.get(index));
+    }
+
+    private String render(List<RetrievedChunk> chunks, BiFunction<RetrievedChunk, Integer, Integer> citationResolver) {
         if (chunks == null || chunks.isEmpty()) {
             return "未检索到相关片段。";
         }
         StringBuilder sb = new StringBuilder();
         sb.append("检索到 ").append(chunks.size()).append(" 条相关片段：\n");
-        for (RetrievedChunk chunk : chunks) {
-            sb.append("[").append(chunk.rank()).append("] ")
+        for (int i = 0; i < chunks.size(); i++) {
+            RetrievedChunk chunk = chunks.get(i);
+            sb.append("[").append(citationResolver.apply(chunk, i)).append("] ")
                     .append(chunk.docName()).append(":")
                     .append(chunk.content()).append("\n");
         }

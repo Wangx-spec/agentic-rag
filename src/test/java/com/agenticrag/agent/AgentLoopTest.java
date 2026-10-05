@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -554,6 +555,80 @@ class AgentLoopTest {
         assertEquals("M3 包含状态机 [1]。", result);
         assertTrue(ctx.getEvidenceRegistry().find("1").isPresent());
         verify(reporter).onEvidence(any());
+    }
+
+    @Test
+    void multiRoundSearchObservationUsesEvidenceRegistryIds() {
+        HybridRetriever retriever = mock(HybridRetriever.class);
+        SearchKnowledgeBaseTool kbTool = new SearchKnowledgeBaseTool(retriever, toolRegistry);
+        when(toolRegistry.find("search_knowledge_base")).thenReturn(Optional.of(kbTool));
+        when(retriever.retrieve("第一问")).thenReturn(List.of(
+                new RetrievedChunk(1L, 10L, 1, "第一条", "a.md", 0.9, 1),
+                new RetrievedChunk(2L, 10L, 2, "第二条", "a.md", 0.8, 2),
+                new RetrievedChunk(3L, 10L, 3, "第三条", "a.md", 0.7, 3)
+        ));
+        when(retriever.retrieve("第二问")).thenReturn(List.of(
+                new RetrievedChunk(4L, 20L, 1, "第四条", "b.md", 0.9, 1),
+                new RetrievedChunk(5L, 20L, 2, "第五条", "b.md", 0.8, 2),
+                new RetrievedChunk(6L, 20L, 3, "第六条", "b.md", 0.7, 3)
+        ));
+        when(llmClient.chatWithTools(anyList(), anyList()))
+                .thenReturn(new LlmResponse("", List.of(
+                        new ToolCall("call_1", "search_knowledge_base", "{\"query\":\"第一问\"}")
+                )))
+                .thenReturn(new LlmResponse("", List.of(
+                        new ToolCall("call_2", "search_knowledge_base", "{\"query\":\"第二问\"}")
+                )))
+                .thenReturn(new LlmResponse("综合回答 [1][4]。", List.of()));
+
+        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
+        AgentContext ctx = new AgentContext(
+                List.of(ChatMessage.user("分两步查")),
+                List.of(),
+                5
+        );
+
+        loop.run(ctx, reporter);
+
+        String firstObservation = ctx.getMessages().get(2).content();
+        String secondObservation = ctx.getMessages().get(4).content();
+        assertTrue(firstObservation.contains("[1] a.md"));
+        assertTrue(firstObservation.contains("[2] a.md"));
+        assertTrue(firstObservation.contains("[3] a.md"));
+        assertTrue(secondObservation.contains("[4] b.md"));
+        assertTrue(secondObservation.contains("[5] b.md"));
+        assertTrue(secondObservation.contains("[6] b.md"));
+        assertFalse(secondObservation.contains("[1] b.md"));
+        assertEquals("4", ctx.getEvidenceRegistry().snapshot().get(3).id());
+        assertEquals(4, ctx.getSources().get(3).rank());
+    }
+
+    @Test
+    void criticRetryAnswerRunsThroughLeakSanitizer() {
+        CriticService criticService = mock(CriticService.class);
+        String leakedRetry = LEAK + " name=\"search\">leaked</" + "tool_call>";
+        when(llmClient.chatWithTools(anyList(), anyList()))
+                .thenReturn(new LlmResponse("初答包含未支撑数字 999。", List.of()));
+        when(criticService.review(anyString(), any()))
+                .thenReturn(new CriticService.CriticResult(CriticService.CriticVerdict.RETRY, "数字 999 无证据"))
+                .thenReturn(CriticService.CriticResult.pass());
+        when(llmClient.chat(anyList())).thenReturn(leakedRetry, "干净合成答案。");
+
+        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator,
+                ragProperties(), null, null, criticService);
+        AgentContext ctx = new AgentContext(
+                List.of(ChatMessage.user("什么是 RAG")),
+                List.of(),
+                5,
+                "什么是 RAG"
+        );
+        ctx.addSources(List.of(new RetrievedChunk(1L, 100L, 1, "RAG 是检索增强生成", "doc.pdf", 0.9, 1)));
+
+        String result = loop.run(ctx, reporter);
+
+        assertEquals("干净合成答案。", result);
+        assertFalse(result.contains(LEAK));
+        verify(llmClient, times(2)).chat(anyList());
     }
 
     // ==================== ThreadLocal 兜底清理测试 ====================

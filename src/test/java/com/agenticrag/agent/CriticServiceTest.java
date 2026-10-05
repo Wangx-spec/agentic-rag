@@ -49,9 +49,22 @@ class CriticServiceTest {
         AgentContext ctx = context(Intent.DATA_ANALYSIS);
         ctx.incrementToolCallCount();
 
-        CriticService.CriticResult result = service.review("销售额是 999。", ctx);
+        CriticService.CriticResult result = service.review("销售额是 999 元。", ctx);
 
         assertEquals(CriticService.CriticVerdict.DECLARE_UNCERTAIN, result.verdict());
+    }
+
+    @Test
+    void doesNotDeclareUncertainForPlainNumberWithoutBusinessUnit() {
+        LlmClient llmClient = mock(LlmClient.class);
+        when(llmClient.chat(anyList())).thenReturn("{\"verdict\":\"PASS\",\"reason\":\"ok\"}");
+        CriticService service = new CriticService(llmClient, new RagProperties());
+        AgentContext ctx = context(Intent.DATA_ANALYSIS);
+        ctx.incrementToolCallCount();
+
+        CriticService.CriticResult result = service.review("可以从 3 个原因分析。", ctx);
+
+        assertEquals(CriticService.CriticVerdict.PASS, result.verdict());
     }
 
     private static AgentContext context(Intent intent) {

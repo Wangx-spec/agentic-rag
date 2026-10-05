@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * S3.2：最终回答前的轻量证据自检。
@@ -23,6 +24,10 @@ public class CriticService {
     private final LlmClient llmClient;
     private final RagProperties ragProperties;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final Pattern QUANTIFIED_NUMBER = Pattern.compile(
+            ".*(?:\\d+(?:\\.\\d+)?\\s*(?:%|％|万|亿|元|单|件|条|个订单)|(?:销售额|订单数|销量|金额|GMV|收入|利润)\\D{0,8}\\d+(?:\\.\\d+)?).*",
+            Pattern.CASE_INSENSITIVE
+    );
 
     public CriticResult review(String answer, AgentContext ctx) {
         if (!shouldReview(answer, ctx)) {
@@ -90,7 +95,7 @@ public class CriticService {
     }
 
     private boolean containsDigit(String text) {
-        return text != null && text.matches(".*\\d.*");
+        return text != null && QUANTIFIED_NUMBER.matcher(text).matches();
     }
 
     private String stripCodeFence(String response) {

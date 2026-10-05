@@ -309,9 +309,10 @@ public class AgentLoop {
                 }
                 String query = queryObj.toString();
                 List<RetrievedChunk> chunks = kbTool.search(query);
-                ctx.addSources(chunks);
-                ctx.getEvidenceRegistry().registerDocumentChunks(chunks);
-                return kbTool.render(chunks);
+                List<EvidenceRegistry.Evidence> evidences = ctx.getEvidenceRegistry().registerDocumentChunks(chunks);
+                List<RetrievedChunk> numberedChunks = withEvidenceRanks(chunks, evidences);
+                ctx.addSources(numberedChunks);
+                return kbTool.render(numberedChunks, numberedChunks.stream().map(RetrievedChunk::rank).toList());
             }
             String result = tool.execute(args);
             if (tool instanceof SearchMemoryTool && result != null && !result.startsWith("错误")) {
@@ -378,15 +379,44 @@ public class AgentLoop {
             ctx.addMessage(ChatMessage.system("证据自检发现以下内容缺少支撑，请只依据已登记证据重答，并对不确定部分明确说明："
                     + result.reason()));
             String retry = llmClient.chat(ctx.getMessages());
-            CriticService.CriticResult retryResult = criticService.review(retry, ctx);
+            String sanitizedRetry = sanitizeFinalAnswer(ctx, retry);
+            CriticService.CriticResult retryResult = criticService.review(sanitizedRetry, ctx);
             if (retryResult.verdict() == CriticService.CriticVerdict.PASS) {
-                return retry;
+                return sanitizedRetry;
             }
-            return retry + criticService.uncertainSuffix(retryResult.reason());
+            return sanitizedRetry + criticService.uncertainSuffix(retryResult.reason());
         } catch (Exception e) {
             log.warn("Critic 触发重答失败，保留原回答并追加不确定性说明", e);
             return answer + criticService.uncertainSuffix(result.reason());
         }
+    }
+
+    private List<RetrievedChunk> withEvidenceRanks(List<RetrievedChunk> chunks, List<EvidenceRegistry.Evidence> evidences) {
+        if (chunks == null || chunks.isEmpty()) {
+            return List.of();
+        }
+        List<RetrievedChunk> result = new ArrayList<>();
+        for (int i = 0; i < chunks.size(); i++) {
+            RetrievedChunk chunk = chunks.get(i);
+            int rank = chunk.rank();
+            if (i < evidences.size()) {
+                try {
+                    rank = Integer.parseInt(evidences.get(i).id());
+                } catch (NumberFormatException ignored) {
+                    // 保留原 rank；EvidenceRegistry 当前使用数字 id，这里仅做防御。
+                }
+            }
+            result.add(new RetrievedChunk(
+                    chunk.chunkId(),
+                    chunk.documentId(),
+                    chunk.seq(),
+                    chunk.content(),
+                    chunk.docName(),
+                    chunk.rrfScore(),
+                    rank
+            ));
+        }
+        return result;
     }
 
     @SuppressWarnings("unchecked")
