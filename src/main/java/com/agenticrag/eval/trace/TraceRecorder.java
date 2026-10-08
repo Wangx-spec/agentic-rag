@@ -134,7 +134,8 @@ public class TraceRecorder {
         if (value == null || value.length() <= max) {
             return value;
         }
-        return value.substring(0, max) + "...";
+        // 截断后追加省略号，总长恰好为 max（此前 substring(0, max) + "..." 会产出 max+3，撞 H2 VARCHAR 限长）
+        return value.substring(0, Math.max(1, max - 3)) + "...";
     }
 
     private Integer estimateTokens(String... values) {
