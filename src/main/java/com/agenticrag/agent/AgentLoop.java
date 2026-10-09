@@ -197,8 +197,8 @@ public class AgentLoop {
 
         List<RetrievedChunk> accumulated = ctx.getSources();
         if (accumulated == null || accumulated.isEmpty()) {
-            log.warn("累积 sources 为空，无法降级，返回原始终答");
-            return rawAnswer;
+            log.warn("累积 sources 为空，触发无工具纯文本收尾");
+            return synthesizePlainFinalAnswer(ctx);
         }
 
         String query = ctx.getOriginalQuery();
@@ -218,6 +218,20 @@ public class AgentLoop {
         } catch (Exception e) {
             log.warn("RAG 合成失败", e);
             return "抱歉，处理失败，请重试。";
+        }
+    }
+
+    private String synthesizePlainFinalAnswer(AgentContext ctx) {
+        try {
+            String answer = llmClient.chat(ctx.getMessages());
+            if (answer == null || answer.contains("<tool_call")) {
+                log.warn("无工具纯文本收尾仍泄漏工具调用标记");
+                return "抱歉，本次数据分析未能得出结论，请稍后重试。";
+            }
+            return answer;
+        } catch (Exception e) {
+            log.warn("无工具纯文本收尾失败", e);
+            return "抱歉，本次数据分析未能得出结论，请稍后重试。";
         }
     }
 

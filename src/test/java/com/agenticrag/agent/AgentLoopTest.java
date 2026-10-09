@@ -350,10 +350,11 @@ class AgentLoopTest {
     }
 
     @Test
-    void leakedFinalAnswerWithNoSourcesReturnsOriginal() {
+    void leakedFinalAnswerWithNoSourcesUsesPlainFinalAnswer() {
         String leakedContent = LEAK + " name=\"search\">leaked</" + "tool_call>";
         when(llmClient.chatWithTools(anyList(), anyList()))
                 .thenReturn(new LlmResponse(leakedContent, List.of()));
+        when(llmClient.chat(anyList())).thenReturn("这是基于工具观察的干净回答。");
 
         AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
 
@@ -366,7 +367,30 @@ class AgentLoopTest {
 
         String result = loop.run(ctx, reporter);
 
-        assertEquals(leakedContent, result);
+        assertEquals("这是基于工具观察的干净回答。", result);
+        assertFalse(result.contains(LEAK));
+    }
+
+    @Test
+    void leakedFinalAnswerWithNoSourcesReturnsFallbackWhenPlainFinalStillLeaks() {
+        String leakedContent = LEAK + " name=\"search\">leaked</" + "tool_call>";
+        when(llmClient.chatWithTools(anyList(), anyList()))
+                .thenReturn(new LlmResponse(leakedContent, List.of()));
+        when(llmClient.chat(anyList())).thenReturn(leakedContent);
+
+        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
+
+        AgentContext ctx = new AgentContext(
+                List.of(ChatMessage.user("统计订单金额")),
+                List.of(),
+                5,
+                "统计订单金额"
+        );
+
+        String result = loop.run(ctx, reporter);
+
+        assertEquals("抱歉，本次数据分析未能得出结论，请稍后重试。", result);
+        assertFalse(result.contains(LEAK));
     }
 
     // ==================== 终答引用裁剪测试 ====================
@@ -651,7 +675,7 @@ class AgentLoopTest {
         DataAnalysisProperties dataProps = new DataAnalysisProperties();
         dataProps.setMaxRows(10);
         dataProps.setQueryTimeoutSeconds(5);
-        new RunSqlTool(jdbc, new SqlSafetyGuard(), dataProps, toolRegistry)
+        new RunSqlTool(jdbc, new SqlSafetyGuard(), dataProps, toolRegistry, null)
                 .execute(Map.of("sql", "SELECT COUNT(*) FROM orders"));
     }
 

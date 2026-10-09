@@ -42,6 +42,25 @@ class EvidenceRegistryTest {
     }
 
     @Test
+    void sqlEvidenceSummaryContainsColumnsAndFirstRowValues() {
+        EvidenceRegistry registry = new EvidenceRegistry();
+
+        EvidenceRegistry.Evidence sql = registry.registerSqlResult(
+                "SELECT platform, SUM(amount) AS total_amount FROM orders GROUP BY platform",
+                List.of("platform", "total_amount"),
+                List.of(List.of("淘宝", 1288.5)),
+                true
+        );
+
+        assertTrue(sql.summary().contains("SELECT platform"));
+        assertTrue(sql.summary().contains("platform"));
+        assertTrue(sql.summary().contains("total_amount"));
+        assertTrue(sql.summary().contains("淘宝"));
+        assertTrue(sql.summary().contains("1288.5"));
+        assertTrue(sql.summary().contains("已截断"));
+    }
+
+    @Test
     void duplicateDocumentRankGetsNewId() {
         EvidenceRegistry registry = new EvidenceRegistry();
         registry.registerDocumentChunks(List.of(

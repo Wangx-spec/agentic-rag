@@ -4,6 +4,11 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import java.util.Set;
 
 /**
  * SqlSafetyGuard 全规则单测（对应 T6 验证）：
@@ -181,5 +186,33 @@ class SqlSafetyGuardTest {
     @Test
     void rejectsSetStatement() {
         assertThrows(SqlSafetyException.class, () -> guard.validate("SET statement_timeout = 0"));
+    }
+
+    @Test
+    void rejectsNonDemoTableWithRetryableUnknownTableException() {
+        DemoSchemaService schema = mock(DemoSchemaService.class);
+        when(schema.tableNamesLowercase()).thenReturn(Set.of("orders"));
+        when(schema.availableTableList()).thenReturn("orders");
+        SqlSafetyGuard guarded = new SqlSafetyGuard(schema);
+
+        SqlSafetyGuard.UnknownTableException ex = assertThrows(SqlSafetyGuard.UnknownTableException.class,
+                () -> guarded.validate("SELECT * FROM documents"));
+
+        assertTrue(ex.getMessage().contains("表 documents 不存在"));
+        assertTrue(ex.getMessage().contains("orders"));
+    }
+
+    @Test
+    void allowsCteNameOutsideWhitelist() {
+        DemoSchemaService schema = mock(DemoSchemaService.class);
+        when(schema.tableNamesLowercase()).thenReturn(Set.of("orders"));
+        SqlSafetyGuard guarded = new SqlSafetyGuard(schema);
+
+        assertDoesNotThrow(() -> guarded.validate("""
+                WITH t AS (
+                    SELECT platform, COUNT(*) AS cnt FROM orders GROUP BY platform
+                )
+                SELECT * FROM t
+                """));
     }
 }

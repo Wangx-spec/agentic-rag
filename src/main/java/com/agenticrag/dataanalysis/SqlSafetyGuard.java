@@ -1,9 +1,13 @@
 package com.agenticrag.dataanalysis;
 
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * SQL 只读安全校验（N1 应用层，与数据库只读账号双层兜底）。
@@ -12,6 +16,11 @@ import java.util.Set;
  */
 @Component
 public class SqlSafetyGuard {
+
+    private static final Pattern TABLE_REFERENCE_PATTERN =
+            Pattern.compile("(?i)\\b(?:FROM|JOIN)\\s+([a-zA-Z_][\\w.]*)(?!\\s*\\()");
+    private static final Pattern CTE_NAME_PATTERN =
+            Pattern.compile("(?i)(?:WITH|,)\\s+([a-zA-Z_][\\w]*)\\s*(?:\\([^)]*\\)\\s*)?AS\\s*\\(");
 
     private static final Set<String> DANGEROUS_KEYWORDS = Set.of(
             "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE",
@@ -22,6 +31,20 @@ public class SqlSafetyGuard {
             "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE",
             "PREPARE", "DEALLOCATE", "SECURITY", "COMMENT", "DISCARD", "LOAD"
     );
+
+    private DemoSchemaService demoSchemaService;
+
+    public SqlSafetyGuard() {
+    }
+
+    public SqlSafetyGuard(DemoSchemaService demoSchemaService) {
+        this.demoSchemaService = demoSchemaService;
+    }
+
+    @Autowired(required = false)
+    public void setDemoSchemaService(DemoSchemaService demoSchemaService) {
+        this.demoSchemaService = demoSchemaService;
+    }
 
     /**
      * 校验 SQL 是否只读安全。
@@ -46,6 +69,7 @@ public class SqlSafetyGuard {
 
         checkSemicolon(trimmed);
         checkDangerousKeywords(trimmed);
+        checkAllowedTables(trimmed);
         return sql;
     }
 
@@ -74,6 +98,48 @@ public class SqlSafetyGuard {
                 idx = end;
             }
         }
+    }
+
+    private void checkAllowedTables(String strippedSql) {
+        if (demoSchemaService == null || demoSchemaService.tableNamesLowercase().isEmpty()) {
+            return;
+        }
+        Set<String> referenced = extractReferencedTables(strippedSql);
+        if (referenced.isEmpty()) {
+            return;
+        }
+        Set<String> cteNames = extractCteNames(strippedSql);
+        Set<String> allowed = demoSchemaService.tableNamesLowercase();
+        for (String table : referenced) {
+            if (cteNames.contains(table)) {
+                continue;
+            }
+            if (!allowed.contains(table)) {
+                throw new UnknownTableException("表 " + table + " 不存在，可用表：" + demoSchemaService.availableTableList());
+            }
+        }
+    }
+
+    private Set<String> extractReferencedTables(String strippedSql) {
+        Set<String> tables = new LinkedHashSet<>();
+        Matcher matcher = TABLE_REFERENCE_PATTERN.matcher(strippedSql);
+        while (matcher.find()) {
+            String token = matcher.group(1);
+            String table = token.contains(".") ? token.substring(token.lastIndexOf('.') + 1) : token;
+            if (!table.isBlank()) {
+                tables.add(table.toLowerCase(Locale.ROOT));
+            }
+        }
+        return tables;
+    }
+
+    private Set<String> extractCteNames(String strippedSql) {
+        Set<String> names = new LinkedHashSet<>();
+        Matcher matcher = CTE_NAME_PATTERN.matcher(strippedSql);
+        while (matcher.find()) {
+            names.add(matcher.group(1).toLowerCase(Locale.ROOT));
+        }
+        return names;
     }
 
     /**
@@ -132,5 +198,11 @@ public class SqlSafetyGuard {
 
     private boolean isWordChar(char c) {
         return Character.isLetterOrDigit(c) || c == '_';
+    }
+
+    public static class UnknownTableException extends SqlSafetyException {
+        public UnknownTableException(String message) {
+            super(message);
+        }
     }
 }

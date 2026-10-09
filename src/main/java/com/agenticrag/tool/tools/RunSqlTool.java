@@ -1,5 +1,6 @@
 package com.agenticrag.tool.tools;
 
+import com.agenticrag.dataanalysis.DemoSchemaService;
 import com.agenticrag.dataanalysis.SqlSafetyException;
 import com.agenticrag.dataanalysis.SqlSafetyGuard;
 import com.agenticrag.dataanalysis.dto.QueryResult;
@@ -56,6 +57,7 @@ public class RunSqlTool implements Tool {
     private final SqlSafetyGuard sqlSafetyGuard;
     private final com.agenticrag.dataanalysis.DataAnalysisProperties properties;
     private final ToolRegistry toolRegistry;
+    private final DemoSchemaService demoSchemaService;
 
     @PostConstruct
     public void register() {
@@ -69,7 +71,12 @@ public class RunSqlTool implements Tool {
 
     @Override
     public String description() {
-        return "对数据库执行只读 SQL 查询（仅 SELECT/WITH），返回 Markdown 表格结果；支持行数上限与超时保护";
+        String tables = demoSchemaService == null
+                ? "可用业务表清单暂未加载，请先调用 list_tables 查看表结构。"
+                : demoSchemaService.toolDescriptionSummary();
+        return "对 demo 业务数据库执行只读 SQL 查询。仅可查询以下业务表：" + tables
+                + "。写 SQL 前先调用 list_tables 确认列名、类型与样本值；仅支持 SELECT/WITH；"
+                + "查询失败时根据错误提示修正 SQL 后重试，不要重复同一错误 SQL。";
     }
 
     @Override
@@ -92,6 +99,8 @@ public class RunSqlTool implements Tool {
 
         try {
             sqlSafetyGuard.validate(sql);
+        } catch (SqlSafetyGuard.UnknownTableException e) {
+            return e.getMessage();
         } catch (SqlSafetyException e) {
             return HARD_FAILURE_PREFIX + "查询被拒绝：" + e.getMessage();
         }
@@ -107,10 +116,10 @@ public class RunSqlTool implements Tool {
             return result.toMarkdown();
         } catch (DataAccessException e) {
             log.warn("demo 库查询失败: {}", e.getMessage());
-            return HARD_FAILURE_PREFIX + "查询执行失败：SQL 有误或数据不可用（请检查语法与表/字段名）。";
+            return "查询失败：SQL 有误或数据不可用。请检查表名/列名（可先调用 list_tables 查看表结构与样本），修正 SQL 后重试。";
         } catch (Exception e) {
             log.warn("demo 库查询出现未预期异常", e);
-            return HARD_FAILURE_PREFIX + "查询执行失败，请稍后重试。";
+            return "查询失败：工具执行出现异常。请检查表名/列名（可先调用 list_tables 查看表结构与样本），修正 SQL 后重试。";
         }
     }
 

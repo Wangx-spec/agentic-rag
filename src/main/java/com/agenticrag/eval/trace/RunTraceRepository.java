@@ -1,6 +1,7 @@
 package com.agenticrag.eval.trace;
 
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -12,6 +13,7 @@ import java.util.Arrays;
 import java.util.List;
 
 @Repository
+@Profile("eval")
 public class RunTraceRepository {
 
     private static final String INSERT_SQL = """
@@ -23,7 +25,7 @@ public class RunTraceRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public RunTraceRepository(@Qualifier("jdbcTemplate") JdbcTemplate jdbcTemplate) {
+    public RunTraceRepository(@Qualifier("traceJdbcTemplate") JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 

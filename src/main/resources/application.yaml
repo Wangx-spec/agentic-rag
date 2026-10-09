@@ -54,7 +54,7 @@ rag:
       max-tool-calls-per-session: ${RAG_AGENT_BUDGET_MAX_TOOL_CALLS_PER_SESSION:12}
       max-total-tokens: ${RAG_AGENT_BUDGET_MAX_TOTAL_TOKENS:60000}
       sql-max-rows: ${RAG_AGENT_BUDGET_SQL_MAX_ROWS:200}
-      sql-max-chars: ${RAG_AGENT_BUDGET_SQL_MAX_CHARS:8000}
+      sql-max-chars: ${RAG_AGENT_BUDGET_SQL_MAX_CHARS:6000}
       retrieval-max-chars: ${RAG_AGENT_BUDGET_RETRIEVAL_MAX_CHARS:6000}
   embedding-dim: ${RAG_EMBEDDING_DIM:4096}
   data-dir: ${RAG_DATA_DIR:./data}

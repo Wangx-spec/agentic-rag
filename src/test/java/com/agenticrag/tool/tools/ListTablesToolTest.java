@@ -1,20 +1,15 @@
 package com.agenticrag.tool.tools;
 
+import com.agenticrag.dataanalysis.DemoSchemaService;
 import com.agenticrag.tool.ToolRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
 
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,30 +18,15 @@ import static org.mockito.Mockito.when;
  */
 class ListTablesToolTest {
 
-    private JdbcTemplate demoJdbcTemplate;
+    private DemoSchemaService demoSchemaService;
     private ToolRegistry toolRegistry;
     private ListTablesTool tool;
 
     @BeforeEach
     void setUp() {
-        demoJdbcTemplate = mock(JdbcTemplate.class);
+        demoSchemaService = mock(DemoSchemaService.class);
         toolRegistry = mock(ToolRegistry.class);
-        tool = new ListTablesTool(demoJdbcTemplate, toolRegistry);
-    }
-
-    private Map<String, Object> tableRow(String name, String comment) {
-        Map<String, Object> row = new HashMap<>();
-        row.put("table_name", name);
-        row.put("table_comment", comment);
-        return row;
-    }
-
-    private Map<String, Object> columnRow(String name, String type, String comment) {
-        Map<String, Object> row = new HashMap<>();
-        row.put("column_name", name);
-        row.put("data_type", type);
-        row.put("column_comment", comment);
-        return row;
+        tool = new ListTablesTool(demoSchemaService, toolRegistry);
     }
 
     @Test
@@ -57,48 +37,49 @@ class ListTablesToolTest {
 
     @Test
     void listsAllTablesWithCommentsAndColumns() {
-        when(demoJdbcTemplate.queryForList(anyString())).thenReturn(List.of(
-                tableRow("orders", "订单表"),
-                tableRow("users", null)
-        ));
-        when(demoJdbcTemplate.queryForList(anyString(), eq("orders"))).thenReturn(List.of(
-                columnRow("id", "bigint", "主键"),
-                columnRow("payment_method", "varchar", "支付方式")
-        ));
-        when(demoJdbcTemplate.queryForList(anyString(), eq("users"))).thenReturn(List.of(
-                columnRow("id", "bigint", null)
-        ));
+        when(demoSchemaService.describeAll()).thenReturn("""
+                数据库共有 2 张表：
+
+                ## orders（订单表）
+                  列：id(bigint):主键, payment_method(varchar):支付方式
+                  样本：[{id=1, payment_method=支付宝}]
+
+                ## users
+                  列：id(bigint)
+                  样本：[{id=7}]
+                """);
 
         String result = tool.execute(Map.of());
 
         assertTrue(result.contains("数据库共有 2 张表"));
         assertTrue(result.contains("## orders（订单表）"));
-        assertTrue(result.contains("- id (bigint)：主键"));
-        assertTrue(result.contains("- payment_method (varchar)：支付方式"));
+        assertTrue(result.contains("id(bigint):主键"));
+        assertTrue(result.contains("payment_method(varchar):支付方式"));
+        assertTrue(result.contains("样本"));
+        assertTrue(result.contains("支付宝"));
         // 无表注释时不渲染括号
         assertTrue(result.contains("## users\n"));
         assertFalse(result.contains("## users（"));
-        // 无字段注释的 users.id：整行以换行直接结尾，不渲染冒号说明
-        assertTrue(result.contains("## users\n  - id (bigint)\n"));
     }
 
     @Test
     void rendersSingleTableWhenTableArgumentProvided() {
-        when(demoJdbcTemplate.queryForList(anyString(), eq("orders"))).thenReturn(List.of(
-                columnRow("id", "bigint", "主键")
-        ));
+        when(demoSchemaService.describeTable("orders")).thenReturn("""
+                ## orders（订单表）
+                  列：id(bigint):主键
+                  样本：[{id=1}]
+                """);
 
         String result = tool.execute(Map.of("table", "orders"));
 
-        assertTrue(result.contains("表 orders 的字段："));
-        assertTrue(result.contains("- id (bigint)：主键"));
-        // 指定单表时不再查全库表清单
-        verify(demoJdbcTemplate, never()).queryForList(anyString());
+        assertTrue(result.contains("## orders"));
+        assertTrue(result.contains("id(bigint):主键"));
+        verify(demoSchemaService).describeTable("orders");
     }
 
     @Test
     void reportsEmptyDatabase() {
-        when(demoJdbcTemplate.queryForList(anyString())).thenReturn(List.of());
+        when(demoSchemaService.describeAll()).thenReturn("当前数据库中没有表。");
 
         String result = tool.execute(Map.of());
 
@@ -107,7 +88,7 @@ class ListTablesToolTest {
 
     @Test
     void reportsUnknownTableWithoutColumns() {
-        when(demoJdbcTemplate.queryForList(anyString(), eq("nope"))).thenReturn(List.of());
+        when(demoSchemaService.describeTable("nope")).thenReturn("表 nope 的字段：\n  （未找到该表或无字段）\n");
 
         String result = tool.execute(Map.of("table", "nope"));
 
@@ -117,8 +98,7 @@ class ListTablesToolTest {
 
     @Test
     void failsOpenOnQueryException() {
-        when(demoJdbcTemplate.queryForList(anyString()))
-                .thenThrow(new RuntimeException("db down"));
+        when(demoSchemaService.describeAll()).thenThrow(new RuntimeException("db down"));
 
         String result = tool.execute(Map.of());
 

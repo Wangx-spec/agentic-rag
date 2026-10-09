@@ -46,7 +46,10 @@ public class EvidenceRegistry {
 
     public Evidence registerSqlResult(String sql, List<String> columns, List<?> rows, boolean truncated) {
         int rowCount = rows == null ? 0 : rows.size();
-        String summary = "SQL 查询结果（" + rowCount + " 行" + (truncated ? "，已截断" : "") + "）";
+        String summary = "SQL: " + abbreviate(sql, 80)
+                + " → 列[" + String.join(", ", safeColumns(columns)) + "]"
+                + " 首行" + firstRowSummary(rows)
+                + "（" + rowCount + " 行" + (truncated ? "，已截断" : "") + "）";
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("sql", sql == null ? "" : sql);
         metadata.put("columns", columns == null ? List.of() : columns);
@@ -54,6 +57,35 @@ public class EvidenceRegistry {
         metadata.put("truncated", truncated);
         return registerNext(EvidenceType.SQL_RESULT, summary,
                 Integer.toHexString(String.valueOf(sql).hashCode()), metadata);
+    }
+
+    private static List<String> safeColumns(List<String> columns) {
+        if (columns == null || columns.isEmpty()) {
+            return List.of();
+        }
+        return columns.stream().map(column -> column == null ? "" : column).toList();
+    }
+
+    private static String firstRowSummary(List<?> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return "{}";
+        }
+        Object first = rows.get(0);
+        if (first instanceof List<?> values) {
+            return values.toString();
+        }
+        return String.valueOf(first);
+    }
+
+    private static String abbreviate(String value, int maxChars) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.replaceAll("\\s+", " ").trim();
+        if (normalized.length() <= maxChars) {
+            return normalized;
+        }
+        return normalized.substring(0, Math.max(1, maxChars - 1)) + "…";
     }
 
     public Evidence registerMemory(String summary, String payloadRef) {

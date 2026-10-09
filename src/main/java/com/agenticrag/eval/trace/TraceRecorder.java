@@ -3,6 +3,7 @@ package com.agenticrag.eval.trace;
 import com.agenticrag.agent.EvidenceRegistry;
 import com.agenticrag.eval.EvalProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -10,6 +11,7 @@ import java.util.List;
 
 @Slf4j
 @Component
+@Profile("eval")
 public class TraceRecorder {
 
     private final RunTraceRepository repository;
@@ -120,7 +122,7 @@ public class TraceRecorder {
                 event.turn(),
                 event.eventType(),
                 event.toolName(),
-                truncate(event.toolArgsSummary(), max),
+                shouldKeepFullToolArgs(event) ? event.toolArgsSummary() : truncate(event.toolArgsSummary(), max),
                 truncate(event.resultSummary(), max),
                 event.evidenceIds(),
                 event.evidenceTypes(),
@@ -128,6 +130,10 @@ public class TraceRecorder {
                 event.criticVerdict(),
                 event.tokensUsed()
         );
+    }
+
+    private boolean shouldKeepFullToolArgs(TraceEvent event) {
+        return "tool_call".equals(event.eventType()) && "run_sql".equals(event.toolName());
     }
 
     private String truncate(String value, int max) {

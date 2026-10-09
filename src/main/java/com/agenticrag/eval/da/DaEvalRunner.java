@@ -90,6 +90,10 @@ public class DaEvalRunner implements CommandLineRunner {
         List<DaEvalQuestion> questions = readQuestions();
         Map<String, DaEvalAnswer> answers = readAnswers(roundsDir().resolve(runId + ".jsonl"));
         List<TraceEvent> traces = runTraceRepository.findByRunId(runId);
+        boolean traceMissing = traces.isEmpty();
+        if (traceMissing) {
+            log.error("轨迹数据缺失：runId={} 未读取到 run_trace 行，路由/轮次/token/Critic 指标无效", runId);
+        }
         Map<String, List<TraceEvent>> tracesByQuestion = metricsDeriver.groupByQuestion(traces);
 
         List<RuleChecker.RuleResult> ruleResults = new ArrayList<>();
@@ -103,6 +107,9 @@ public class DaEvalRunner implements CommandLineRunner {
         }
         MetricsDeriver.Report report = metricsDeriver.derive(questions, traces, ruleResults, judgeResults);
         String markdown = metricsDeriver.renderMarkdown(runId, questions, ruleResults, judgeResults, report);
+        if (traceMissing) {
+            markdown = "⚠️ 轨迹数据缺失，路由/轮次/token/Critic 指标无效\n\n" + markdown;
+        }
         Path reportPath = roundsDir().resolve(runId + "-report.md");
         Files.createDirectories(reportPath.getParent());
         Files.writeString(reportPath, markdown, StandardCharsets.UTF_8);

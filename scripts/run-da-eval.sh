@@ -28,6 +28,13 @@ mkdir -p "$EVAL_DA_ROUNDS_DIR"
 echo "▶ 数据分析评测跑集 run_id=$RUN_ID limit=$LIMIT"
 echo "▶ answers → $EVAL_DA_ROUNDS_DIR/$RUN_ID.jsonl"
 
-exec ./mvnw spring-boot:run \
+./mvnw spring-boot:run \
   -Dspring-boot.run.profiles=eval \
   -Dspring-boot.run.arguments="--spring.main.web-application-type=none"
+
+echo "▶ trace rows for run_id=$RUN_ID"
+./mvnw -q org.codehaus.mojo:exec-maven-plugin:3.5.0:java \
+  -Dexec.classpathScope=runtime \
+  -Dexec.mainClass=org.h2.tools.Shell \
+  -Dexec.args="-url jdbc:h2:file:./target/eval-trace;AUTO_SERVER=TRUE -sql \"SELECT COUNT(*) AS TRACE_ROWS FROM run_trace WHERE run_id = '$RUN_ID'\"" \
+  || echo "⚠️ 轨迹自检查询失败，请手动检查 target/eval-trace"

@@ -1,6 +1,7 @@
 package com.agenticrag.tool.tools;
 
 import com.agenticrag.dataanalysis.DataAnalysisProperties;
+import com.agenticrag.dataanalysis.DemoSchemaService;
 import com.agenticrag.dataanalysis.SqlSafetyGuard;
 import com.agenticrag.dataanalysis.dto.QueryResult;
 import com.agenticrag.tool.ToolRegistry;
@@ -18,6 +19,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -37,6 +39,7 @@ class RunSqlToolTest {
     private JdbcTemplate demoJdbcTemplate;
     private ToolRegistry toolRegistry;
     private DataAnalysisProperties properties;
+    private DemoSchemaService demoSchemaService;
     private RunSqlTool tool;
     private PreparedStatement ps;
 
@@ -47,7 +50,9 @@ class RunSqlToolTest {
         properties = new DataAnalysisProperties();
         properties.setMaxRows(3);
         properties.setQueryTimeoutSeconds(5);
-        tool = new RunSqlTool(demoJdbcTemplate, new SqlSafetyGuard(), properties, toolRegistry);
+        demoSchemaService = mock(DemoSchemaService.class);
+        when(demoSchemaService.toolDescriptionSummary()).thenReturn("orders（订单表）");
+        tool = new RunSqlTool(demoJdbcTemplate, new SqlSafetyGuard(), properties, toolRegistry, demoSchemaService);
         RunSqlTool.clearTableEvents();
     }
 
@@ -119,6 +124,22 @@ class RunSqlToolTest {
         assertTrue(result.contains("查询被拒绝"));
         verifyNoInteractions(demoJdbcTemplate);
         assertTrue(RunSqlTool.drainTableEvents().isEmpty());
+    }
+
+    @Test
+    void unknownTableReturnsRetryableObservationWithoutHardFailure() {
+        DemoSchemaService schema = mock(DemoSchemaService.class);
+        when(schema.tableNamesLowercase()).thenReturn(Set.of("orders"));
+        when(schema.availableTableList()).thenReturn("orders");
+        RunSqlTool guardedTool = new RunSqlTool(demoJdbcTemplate, new SqlSafetyGuard(schema),
+                properties, toolRegistry, schema);
+
+        String result = guardedTool.execute(Map.of("sql", "SELECT * FROM documents"));
+
+        assertFalse(result.startsWith(RunSqlTool.HARD_FAILURE_PREFIX));
+        assertTrue(result.contains("表 documents 不存在"));
+        assertTrue(result.contains("orders"));
+        verifyNoInteractions(demoJdbcTemplate);
     }
 
     @Test
@@ -194,7 +215,7 @@ class RunSqlToolTest {
     }
 
     @Test
-    void returnsSanitizedErrorOnDataAccessException() {
+    void returnsRetryableObservationOnDataAccessException() {
         when(demoJdbcTemplate.<QueryResult>execute(anyString(),
                 ArgumentMatchers.<PreparedStatementCallback<QueryResult>>any()))
                 .thenThrow(new DataAccessResourceFailureException(
@@ -202,23 +223,25 @@ class RunSqlToolTest {
 
         String result = tool.execute(Map.of("sql", "SELECT * FROM orders"));
 
-        assertTrue(result.startsWith(RunSqlTool.HARD_FAILURE_PREFIX));
-        assertTrue(result.contains("查询执行失败"));
+        assertFalse(result.startsWith(RunSqlTool.HARD_FAILURE_PREFIX));
+        assertTrue(result.contains("查询失败"));
+        assertTrue(result.contains("list_tables"));
         // 脱敏：不向 LLM 暴露底层连接信息
         assertFalse(result.contains("secret-host"));
         assertTrue(RunSqlTool.drainTableEvents().isEmpty());
     }
 
     @Test
-    void returnsHardFailureOnUnexpectedException() {
+    void returnsRetryableObservationOnUnexpectedException() {
         when(demoJdbcTemplate.<QueryResult>execute(anyString(),
                 ArgumentMatchers.<PreparedStatementCallback<QueryResult>>any()))
                 .thenThrow(new RuntimeException("boom"));
 
         String result = tool.execute(Map.of("sql", "SELECT * FROM orders"));
 
-        assertTrue(result.startsWith(RunSqlTool.HARD_FAILURE_PREFIX));
-        assertTrue(result.contains("查询执行失败，请稍后重试"));
+        assertFalse(result.startsWith(RunSqlTool.HARD_FAILURE_PREFIX));
+        assertTrue(result.contains("查询失败"));
+        assertTrue(result.contains("list_tables"));
         assertTrue(RunSqlTool.drainTableEvents().isEmpty());
     }
 }
