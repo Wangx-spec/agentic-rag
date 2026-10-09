@@ -12,6 +12,7 @@ import com.agenticrag.rag.retrieve.RerankClient;
 import com.agenticrag.rag.retrieve.RerankResult;
 import com.agenticrag.rag.retrieve.RetrievedChunk;
 import com.agenticrag.tool.Tool;
+import com.agenticrag.tool.ToolCallJsonRepair;
 import com.agenticrag.tool.ToolRegistry;
 import com.agenticrag.tool.ToolSchemaValidator;
 import com.agenticrag.tool.tools.RunSqlTool;
@@ -37,6 +38,7 @@ public class AgentLoop {
     private final ToolRegistry toolRegistry;
     private final LlmProperties properties;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ToolCallJsonRepair toolCallJsonRepair = new ToolCallJsonRepair();
     private final ToolSchemaValidator toolSchemaValidator;
     private final RagProperties ragProperties;
     private final RerankClient rerankClient;
@@ -331,11 +333,9 @@ public class AgentLoop {
             return "错误：未找到工具 \"" + toolCall.name() + "\"，可用工具：" + toolRegistry.all().keySet();
         }
         try {
-            Map<String, Object> args = objectMapper.readValue(
-                    toolCall.argumentsJson(),
-                    new TypeReference<Map<String, Object>>() {}
-            );
+            Map<String, Object> args = parseToolArguments(toolCall);
             Tool tool = toolOpt.get();
+            args = toolSchemaValidator.cast(tool.parametersSchema(), args);
             ToolSchemaValidator.ValidationResult validationResult = toolSchemaValidator.validate(tool.parametersSchema(), args);
             if (!validationResult.valid()) {
                 return "错误：" + validationResult.message();
@@ -357,9 +357,35 @@ public class AgentLoop {
                 ctx.getEvidenceRegistry().registerMemory("长期记忆检索结果", toolCall.id());
             }
             return result;
+        } catch (ToolArgumentsTruncatedException e) {
+            return e.getMessage();
         } catch (Exception e) {
             log.warn("工具 {} 执行失败", toolCall.name(), e);
             return "工具参数解析失败：" + e.getMessage();
+        }
+    }
+
+    private Map<String, Object> parseToolArguments(ToolCall toolCall) throws Exception {
+        try {
+            return objectMapper.readValue(
+                    toolCall.argumentsJson(),
+                    new TypeReference<Map<String, Object>>() {}
+            );
+        } catch (Exception firstFailure) {
+            ToolCallJsonRepair.RepairResult repair = toolCallJsonRepair.repair(toolCall.argumentsJson());
+            if (repair.truncated()) {
+                throw new ToolArgumentsTruncatedException("工具调用参数不完整（疑似被截断），请重新完整发起调用");
+            }
+            return objectMapper.readValue(
+                    repair.repairedJson(),
+                    new TypeReference<Map<String, Object>>() {}
+            );
+        }
+    }
+
+    private static class ToolArgumentsTruncatedException extends Exception {
+        private ToolArgumentsTruncatedException(String message) {
+            super(message);
         }
     }
 

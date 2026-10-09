@@ -24,6 +24,33 @@ class BudgetGuardTest {
     }
 
     @Test
+    void singleLongTextKeepsOriginalHeadTruncation() {
+        RagProperties props = new RagProperties();
+        props.getAgent().getBudget().setSqlMaxChars(10);
+        BudgetGuard guard = new BudgetGuard(props);
+
+        String result = guard.truncate("run_sql", "0123456789abcdef");
+
+        assertTrue(result.startsWith("0123456789"));
+        assertFalse(result.contains("公平截断"));
+    }
+
+    @Test
+    void fairlyTruncatesMultiRecordResultsWithoutDroppingRecords() {
+        RagProperties props = new RagProperties();
+        props.getAgent().getBudget().setSqlMaxChars(30);
+        BudgetGuard guard = new BudgetGuard(props);
+
+        String result = guard.truncate("run_sql", "row1-abcdef\nrow2-abcdef\nrow3-abcdef\nrow4-abcdef");
+
+        assertTrue(result.contains("row1-"));
+        assertTrue(result.contains("row2-"));
+        assertTrue(result.contains("row3-"));
+        assertTrue(result.contains("row4-"));
+        assertTrue(result.contains("公平截断"));
+    }
+
+    @Test
     void disabledBudgetDoesNotTruncate() {
         RagProperties props = new RagProperties();
         props.getAgent().getBudget().setEnabled(false);

@@ -227,6 +227,46 @@ class AgentLoopTest {
     }
 
     @Test
+    void truncatedRepairedToolArgumentsAreNotExecuted() {
+        AtomicBoolean executed = new AtomicBoolean(false);
+        Tool mockTool = new Tool() {
+            @Override
+            public String name() { return "search"; }
+            @Override
+            public String description() { return "搜索"; }
+            @Override
+            public String parametersSchema() {
+                return "{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"}},\"required\":[\"query\"]}";
+            }
+            @Override
+            public String execute(Map<String, Object> args) {
+                executed.set(true);
+                return "should not execute";
+            }
+        };
+
+        when(toolRegistry.find("search")).thenReturn(Optional.of(mockTool));
+        when(llmClient.chatWithTools(anyList(), anyList()))
+                .thenReturn(new LlmResponse("", List.of(
+                        new ToolCall("call_2", "search", "{\"query\":\"M3")
+                )))
+                .thenReturn(new LlmResponse("已重新收尾。", List.of()));
+
+        AgentLoop loop = new AgentLoop(llmClient, toolRegistry, properties(), toolSchemaValidator, ragProperties(), null);
+        AgentContext ctx = new AgentContext(
+                List.of(ChatMessage.user("查一下 M3 状态机方案")),
+                List.of(),
+                5
+        );
+
+        String result = loop.run(ctx, reporter);
+
+        assertEquals("已重新收尾。", result);
+        assertFalse(executed.get());
+        assertTrue(ctx.getMessages().get(2).content().contains("工具调用参数不完整"));
+    }
+
+    @Test
     void eventSequenceFollowsThinkingActingObservingFinal() {
         Tool mockTool = new Tool() {
             @Override

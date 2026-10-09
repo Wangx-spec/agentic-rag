@@ -227,12 +227,13 @@ public class LlmClient {
             return Collections.emptyList();
         }
         List<ToolCall> toolCalls = new ArrayList<>();
-        for (JsonNode toolCallNode : toolCallsNode) {
+        for (int i = 0; i < toolCallsNode.size(); i++) {
+            JsonNode toolCallNode = toolCallsNode.get(i);
             String id = toolCallNode.path("id").asText("");
             JsonNode functionNode = toolCallNode.path("function");
             String name = functionNode.path("name").asText("");
             String argumentsJson = functionNode.path("arguments").asText("");
-            toolCalls.add(new ToolCall(id, name, argumentsJson));
+            toolCalls.add(new ToolCall(ToolCallIds.normalize(id, name, i), name, argumentsJson));
         }
         return toolCalls;
     }

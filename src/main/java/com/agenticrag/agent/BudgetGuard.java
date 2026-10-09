@@ -3,6 +3,10 @@ package com.agenticrag.agent;
 import com.agenticrag.config.RagProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * S3.2：Agent 多步循环资源治理。
  */
@@ -28,6 +32,11 @@ public class BudgetGuard {
         int maxChars = maxCharsFor(toolName);
         if (maxChars <= 0 || result.length() <= maxChars) {
             return result;
+        }
+        String fair = fairTruncateByLines(result, maxChars);
+        if (fair != null) {
+            return fair + "\n\n…已截断（原始 " + result.length() + " 字符，仅展示前 "
+                    + maxChars + " 字符，已按记录公平截断）";
         }
         return result.substring(0, maxChars)
                 + "\n\n…已截断（原始 " + result.length() + " 字符，仅展示前 " + maxChars + " 字符）";
@@ -60,6 +69,63 @@ public class BudgetGuard {
             return budget.getRetrievalMaxChars();
         }
         return budget.getRetrievalMaxChars();
+    }
+
+    private String fairTruncateByLines(String result, int maxChars) {
+        if (!result.contains("\n")) {
+            return null;
+        }
+        List<String> records = Arrays.stream(result.split("\\R", -1))
+                .filter(line -> !line.isBlank())
+                .toList();
+        if (records.size() < 2) {
+            return null;
+        }
+        int separatorBudget = Math.max(0, records.size() - 1);
+        int contentBudget = maxChars - separatorBudget;
+        if (contentBudget < records.size()) {
+            return null;
+        }
+        int[] allocation = allocateFairly(records, contentBudget);
+        List<String> truncated = new ArrayList<>(records.size());
+        boolean changed = false;
+        for (int i = 0; i < records.size(); i++) {
+            String record = records.get(i);
+            int keep = Math.min(record.length(), allocation[i]);
+            changed |= keep < record.length();
+            truncated.add(record.substring(0, keep));
+        }
+        return changed ? String.join("\n", truncated) : null;
+    }
+
+    private int[] allocateFairly(List<String> records, int budget) {
+        int n = records.size();
+        int[] allocation = new int[n];
+        boolean[] settled = new boolean[n];
+        int remainingBudget = budget;
+        int remainingRecords = n;
+        while (remainingRecords > 0) {
+            int waterline = Math.max(1, remainingBudget / remainingRecords);
+            boolean settledAny = false;
+            for (int i = 0; i < n; i++) {
+                if (!settled[i] && records.get(i).length() <= waterline) {
+                    allocation[i] = records.get(i).length();
+                    remainingBudget -= allocation[i];
+                    settled[i] = true;
+                    remainingRecords--;
+                    settledAny = true;
+                }
+            }
+            if (!settledAny) {
+                for (int i = 0; i < n; i++) {
+                    if (!settled[i]) {
+                        allocation[i] = Math.max(1, waterline);
+                    }
+                }
+                break;
+            }
+        }
+        return allocation;
     }
 
     private int estimatedTokens(AgentContext ctx) {

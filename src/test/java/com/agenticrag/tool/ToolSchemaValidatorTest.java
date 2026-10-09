@@ -3,6 +3,7 @@ package com.agenticrag.tool;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -68,5 +69,46 @@ class ToolSchemaValidatorTest {
 
         assertTrue(result.valid());
         assertEquals("", result.message());
+    }
+
+    @Test
+    void castConvertsCompatibleStringValuesBeforeValidation() {
+        String schema = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "topK": { "type": "integer" },
+                    "enabled": { "type": "boolean" },
+                    "ids": { "type": "array" },
+                    "query": { "type": "string" }
+                  }
+                }
+                """;
+
+        Map<String, Object> casted = validator.cast(schema,
+                Map.of("topK", "3", "enabled", "true", "ids", "[1,2]", "query", 99));
+
+        assertEquals(3L, casted.get("topK"));
+        assertEquals(true, casted.get("enabled"));
+        assertEquals(List.of(1, 2), casted.get("ids"));
+        assertEquals("99", casted.get("query"));
+        assertTrue(validator.validate(schema, casted).valid());
+    }
+
+    @Test
+    void castLeavesUnconvertibleValuesForValidator() {
+        String schema = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "topK": { "type": "integer" }
+                  }
+                }
+                """;
+
+        Map<String, Object> casted = validator.cast(schema, Map.of("topK", "abc"));
+
+        assertEquals("abc", casted.get("topK"));
+        assertFalse(validator.validate(schema, casted).valid());
     }
 }
